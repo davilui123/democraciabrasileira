@@ -1,4 +1,4 @@
-// Fase 4.8.2 — catálogo de cutscenes.
+// Fase 4.8.3 — catálogo narrativo de acontecimentos com cobertura audiovisual.
 // O catálogo separa narrativa/asset da lógica de disparo para permitir reutilização por outros personagens.
 export const cutscenesSeed = [
   {
@@ -16,7 +16,7 @@ export const cutscenesSeed = [
     texto: 'Isabela determina que as empresas estaduais não remetam os R$ 12 bilhões esperados do Fundo de Compensação do ICMS ao governo federal. Em coletiva, transforma a disputa fiscal em confronto direto com Brasília.',
     tom: 'Confronto institucional',
     eventoRelacionado: 'sp_icms',
-    testePrimeiraVirada: true,
+    cobertura: { midiaId:'global', veiculo:'GLOBAL', programa:'Jornal Global', manchete:'Isabela desafia Planalto e segura repasse de R$ 12 bi do ICMS' },
   },
   {
     id: 'gov-sp-i2',
@@ -33,6 +33,7 @@ export const cutscenesSeed = [
     texto: 'Isabela inaugura uma expansão do metrô em Guarulhos sem convidar o Presidente, mesmo com participação federal na obra, e usa o palco para contrastar sua gestão com Brasília.',
     tom: 'Provocação por entrega de obra',
     eventoRelacionado: 'infra_sp_metro',
+    cobertura: { midiaId:'canal_geral', veiculo:'CANAL GERAL', programa:'Ao Vivo no Pulso', manchete:'Isabela inaugura metrô em Guarulhos e provoca Brasília por crédito da obra' },
   },
   {
     id: 'gov-sp-i3',
@@ -49,6 +50,7 @@ export const cutscenesSeed = [
     texto: 'Um grande apagão atinge o estado. Em uma sala de crise parcialmente afetada, Isabela atende a ligação do Presidente e coloca a emergência acima da rivalidade política.',
     tom: 'Crise e cooperação',
     eventoRelacionado: 'sp_apagao',
+    cobertura: { midiaId:'n1', veiculo:'N1', programa:'Portal N1', manchete:'Apagão põe São Paulo em emergência e Isabela pede ajuda ao Planalto' },
   },
   {
     id: 'gov-sp-i4',
@@ -65,7 +67,10 @@ export const cutscenesSeed = [
     texto: 'Ao lado do CEO da companhia, Isabela anuncia que uma grande fábrica de semicondutores será instalada em São Paulo após uma disputa de protagonismo entre os governos estadual e federal.',
     tom: 'Vitória econômica e tecnológica',
     eventoRelacionado: 'sp_semicondutores',
+    cobertura: { midiaId:'mundi', veiculo:'MUNDI', programa:'Revista eletrônica', manchete:'São Paulo vence disputa e anuncia nova fábrica de semicondutores' },
   },
 ];
 
 export const cutscenePorId = (id) => cutscenesSeed.find((scene) => scene.id === id) || null;
+
+export const cutscenePorEvento = (eventoId) => cutscenesSeed.find((scene) => scene.eventoRelacionado === eventoId) || null;

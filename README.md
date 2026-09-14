@@ -20,9 +20,11 @@ Simulador político em React/Vite no qual o jogador ocupa a Presidência da Rep�
 - **Fase 4.7:** Programas Governamentais — desenho, marco legal, execução, território, metas e promessas de posse.
 - **Fase 4.7.1:** Personagens Institucionais — dossiês profundos para Câmara, STF, governadores e líderes estrangeiros.
 - **Fase 4.8.1:** Eleições & Pré-campanha — convenções, vice, recursos, pesquisas, IA política global, 27 eleições estaduais, coerência e campanha.
+- **Fase 4.8.2:** acontecimentos audiovisuais persistentes, com Isabela Ferraz como personagem-piloto.
+- **Fase 4.8.3:** Central de Notícias, gabinete incompleto com consequências, STF redistribuído e cenas disparadas por fatos políticos reais do jogo.
 - **Fase 5:** reservada para a primeira gameplay completa e balanceamento.
 
-Consulte `REFACTORACAO_FASE4_8_1_ELEICOES.md` e `QA_FASE4_8_1.md` para a etapa atual.
+Consulte `REFACTORACAO_FASE4_8_3_NOTICIAS_GABINETE.md` e `QA_FASE4_8_3.md` para a etapa atual.
 
 ## Executar
 

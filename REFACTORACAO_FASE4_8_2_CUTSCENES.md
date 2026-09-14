@@ -1,5 +1,7 @@
 # Fase 4.8.2 — Cutscenes
 
+> **Atualização 4.8.3:** o teste determinístico da primeira virada foi encerrado. As cenas agora são disparadas pelo acontecimento político correspondente e a interface deixou de exibir o rótulo técnico “Cutscene”.
+
 ## Objetivo
 
 Introduzir uma camada cinematográfica reutilizável para acontecimentos de alta saliência. Isabela Ferraz, governadora de São Paulo, é a personagem-piloto.

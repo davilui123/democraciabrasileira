@@ -26,6 +26,7 @@ import Congress from './components/Congress';
 import Geopolitics from './components/Geopolitics';
 import Economy from './components/Economy';
 import NewsTicker from './components/NewsTicker';
+import NewsCenter from './components/NewsCenter';
 import Achievements from './components/Achievements';
 import ElectionCenter from './components/ElectionCenter';
 import Indicators from './components/Indicators';
@@ -175,6 +176,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('gabinete');
   const [sessionStarted, setSessionStarted] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
+  const [showNews, setShowNews] = useState(false);
   const [showTurn, setShowTurn] = useState(false);
   const [selectedUF, setSelectedUF] = useState('SP');
 
@@ -282,7 +284,7 @@ function App() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg font-sans text-text">
       <Toaster position="top-right" expand richColors />
-      <NewsTicker />
+      <NewsTicker onOpen={() => setShowNews(true)} />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <aside className="hidden w-[252px] shrink-0 flex-col border-r border-border bg-panel/95 lg:flex">
@@ -427,6 +429,7 @@ function App() {
           </div>
 
           {showAchievements && <Achievements onClose={() => setShowAchievements(false)} />}
+          {showNews && <NewsCenter onClose={() => setShowNews(false)} onNavigate={(tab) => { setActiveTab(tab); setShowNews(false); }} />}
           <MinisterPhone />
           <FederalCrisisModal />
           {showTurn && <TurnTransitionModal onClose={() => setShowTurn(false)} />}

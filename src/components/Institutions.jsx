@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Scale, ShieldCheck, Banknote, Gavel, Vote, CheckCircle2, XCircle, Network, BookOpen, Crown, Star, UsersRound } from 'lucide-react';
+import { Scale, ShieldCheck, Banknote, Gavel, Vote, CheckCircle2, XCircle, Network, BookOpen, Crown, Star, UsersRound, ChevronLeft, ChevronRight } from 'lucide-react';
 import useGameStore from '../store/useGameStore';
 import PoliticalAvatar from './PoliticalAvatar';
 import GameIcon from './GameIcon';
@@ -10,19 +10,31 @@ const tone=v=>v>=70?'text-success':v>=45?'text-warning':'text-danger';
 function Meter({label,value}){return <div><div className="flex justify-between text-[9px] font-black uppercase tracking-wider text-muted"><span>{label}</span><span>{Math.round(value||0)}</span></div><div className="mt-1 h-1.5 overflow-hidden rounded-full bg-bg"><div className="h-full bg-info" style={{width:`${Math.max(0,Math.min(100,value||0))}%`}}/></div></div>}
 
 function CourtSeat({member,onOpen,vacancy=false}){
-  if(vacancy)return <div className="min-h-[118px] rounded-2xl border border-dashed border-warning/35 bg-warning/5 p-3"><div className="grid h-9 w-9 place-items-center rounded-xl border border-warning/25 text-warning"><Gavel size={16}/></div><div className="mt-2 text-xs font-black text-warning">Cadeira vaga</div><div className="mt-1 text-[9px] leading-relaxed text-muted">Indicação presidencial + Senado</div></div>;
+  if(vacancy)return <div className="flex min-h-[184px] min-w-0 flex-col rounded-2xl border border-dashed border-warning/35 bg-warning/5 p-4"><div className="grid h-11 w-11 place-items-center rounded-xl border border-warning/25 text-warning"><Gavel size={18}/></div><div className="mt-4 text-sm font-black text-warning">Cadeira vaga</div><div className="mt-2 text-[10px] leading-relaxed text-muted">Indicação presidencial e aprovação do Senado.</div><div className="mt-auto pt-4 text-[9px] font-black uppercase tracking-wider text-warning/80">1 vaga no colegiado</div></div>;
   const role=member.funcao==='Presidente'?'Presidente':member.funcao==='Vice-Presidente'?'Vice-Presidente':member.funcao==='Decano'?'Decano':null;
-  return <button onClick={()=>onOpen(member)} className={`min-h-[118px] rounded-2xl border p-3 text-left transition hover:border-info/35 ${role?'border-warning/25 bg-warning/5':'border-border bg-panel/38'}`}>
-    <div className="flex items-start justify-between gap-2"><PoliticalAvatar name={member.nome} seed={member.avatar||member.id} imageKey={member.avatar} size={42}/>{role&&<span className="ui-chip">{role==='Presidente'?<Crown size={10}/>:role==='Decano'?<Star size={10}/>:null}{role}</span>}</div>
-    <div className="mt-2 truncate text-xs font-black text-text">{member.nome}</div>
-    <div className="mt-1 truncate text-[9px] text-muted">{member.perfil} · desde {member.posse||'—'}</div>
-    <div className="mt-2 flex items-center justify-between text-[9px]"><span className="text-muted">Indep.</span><b className={tone(member.independencia)}>{member.independencia}</b></div>
+  return <button title={member.nome} onClick={()=>onOpen(member)} className={`flex min-h-[184px] min-w-0 flex-col rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-info/35 hover:shadow-elevation-1 ${role?'border-warning/25 bg-warning/5':'border-border bg-panel/38'}`}>
+    <div className="flex items-start justify-between gap-3"><PoliticalAvatar name={member.nome} seed={member.avatar||member.id} imageKey={member.avatar} size={50}/>{role==='Presidente'?<Crown size={16} className="mt-1 shrink-0 text-warning"/>:role==='Decano'?<Star size={16} className="mt-1 shrink-0 text-warning"/>:null}</div>
+    <div className="mt-3 min-h-[38px] text-sm font-black leading-[1.15] text-text">{member.nome}</div>
+    {role?<div className="mt-2"><span className="inline-flex max-w-full whitespace-normal rounded-full border border-warning/25 bg-warning/10 px-2.5 py-1 text-[8px] font-black uppercase leading-tight tracking-[.04em] text-warning">{role}</span></div>:<div className="mt-2 text-[8px] font-black uppercase tracking-[.08em] text-muted/70">{member.funcao||'Ministro'}</div>}
+    <div className="mt-2 text-[10px] leading-snug text-muted">{member.perfil}</div>
+    <div className="mt-1 text-[9px] font-bold uppercase tracking-wider text-muted/70">Desde {member.posse||'—'}</div>
+    <div className="mt-auto flex items-center justify-between border-t border-border/70 pt-3 text-[10px]"><span className="text-muted">Independência</span><b className={tone(member.independencia)}>{member.independencia}</b></div>
   </button>;
 }
 
-function Turma({title,members,onOpen,vacancies=0}){
+function Turma({title,members,onOpen,index,total,onPrev,onNext}){
   const seats=[...members,...Array.from({length:Math.max(0,5-members.length)},(_,i)=>({id:`${title}_vaga_${i}`,vaga:true}))].slice(0,5);
-  return <section className="rounded-2xl border border-border bg-card/55 p-3"><div className="mb-2 flex items-center justify-between"><div><div className="ui-kicker">{title}</div><div className="text-[10px] text-muted">Colegiado de cinco cadeiras</div></div><UsersRound size={15} className="text-info"/></div><div className="grid grid-cols-5 gap-2">{seats.map(m=><CourtSeat key={m.id} member={m} vacancy={m.vaga} onOpen={onOpen}/>)}</div></section>;
+  return <section className="rounded-2xl border border-border bg-card/55 p-4">
+    <div className="mb-4 flex items-center justify-between gap-4">
+      <div className="min-w-0"><div className="ui-kicker">{title}</div><div className="mt-1 text-[10px] text-muted">Colegiado de cinco cadeiras · {index+1} de {total}</div></div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button type="button" onClick={onPrev} aria-label="Turma anterior" className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-panel/70 text-muted transition hover:border-info/35 hover:text-text"><ChevronLeft size={17}/></button>
+        <div className="hidden items-center gap-1.5 sm:flex">{Array.from({length:total}).map((_,i)=><span key={i} className={`h-1.5 rounded-full transition-all ${i===index?'w-5 bg-info':'w-1.5 bg-border'}`}/>)}</div>
+        <button type="button" onClick={onNext} aria-label="Próxima turma" className="grid h-9 w-9 place-items-center rounded-xl border border-border bg-panel/70 text-muted transition hover:border-info/35 hover:text-text"><ChevronRight size={17}/></button>
+      </div>
+    </div>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">{seats.map(m=><CourtSeat key={m.id} member={m} vacancy={m.vaga} onOpen={onOpen}/>)}</div>
+  </section>;
 }
 
 export default function Institutions({initialTab='stf'}){
@@ -30,23 +42,27 @@ export default function Institutions({initialTab='stf'}){
   const [tab,setTab]=useState(initialTab);
   const [candidate,setCandidate]=useState(null);
   const [dossier,setDossier]=useState(null);
+  const [turmaAtiva,setTurmaAtiva]=useState(0);
   const corte=stf?.corte||[];
   const vagas=Math.max(0,11-corte.length);
   const pending=stf?.indicacaoPendente;
   const presidente=corte.find(m=>m.funcao==='Presidente')||corte[0];
   const turma1=corte.filter(m=>m.turma==='1ª Turma');
   const turma2=corte.filter(m=>m.turma==='2ª Turma');
+  const turmas=[{title:'1ª Turma',members:turma1},{title:'2ª Turma',members:turma2}];
+  const turmaVisivel=turmas[turmaAtiva]||turmas[0];
+  const navegarTurma=(delta)=>setTurmaAtiva(current=>(current+delta+turmas.length)%turmas.length);
   const indicar=(c)=>{const r=indicarMinistroSTF(c.id);if(r.ok){toast.success(`${c.nome} foi enviado à sabatina no Senado.`);setCandidate(null)}else toast.error(r.motivo)};
   const votar=()=>{const r=votarIndicacaoSTF();r.ok?(r.aprovado?toast.success(`Indicação aprovada por ${r.votos} votos.`):toast.error(`Indicação rejeitada: ${r.votos} votos.`)):toast.error(r.motivo)};
   return <div className="ui-page h-full min-h-0 overflow-hidden">
     <div className="mb-3 flex items-center justify-between"><div className="ui-tabs">{[['stf','STF'],['controles','Controles'],['oposicao','Oposição']].map(([id,l])=><button key={id} onClick={()=>setTab(id)} className={`ui-tab ${tab===id?'ui-tab-active':''}`}>{l}</button>)}</div><div className="text-[10px] font-bold uppercase tracking-wider text-muted">Instituições não obedecem ao Presidente · elas reagem, limitam e legitimam</div></div>
 
     {tab==='stf'&&<div className="grid h-[calc(100%-46px)] min-h-0 gap-3 xl:grid-cols-[1.25fr_.75fr]">
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/65"><header className="flex shrink-0 items-center justify-between border-b border-border p-4"><div><div className="ui-kicker">Supremo Tribunal Federal</div><h2 className="mt-1 text-xl font-black">Plenário, antiguidade e duas Turmas</h2><p className="mt-1 text-[10px] text-muted">Presidência em destaque; clique em qualquer cadeira para abrir o dossiê biográfico.</p></div><div className="text-right"><div className="ui-data-label">Tensão com Planalto</div><div className={`text-2xl font-black ${tone(100-(stf?.tensaoInstitucional||0))}`}>{Math.round(stf?.tensaoInstitucional||0)}</div></div></header>
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card/65"><header className="flex shrink-0 items-center justify-between border-b border-border p-4"><div><div className="ui-kicker">Supremo Tribunal Federal</div><h2 className="mt-1 text-xl font-black">Plenário, antiguidade e Turmas</h2><p className="mt-1 text-[10px] text-muted">Presidência em destaque; clique em qualquer cadeira para abrir o dossiê biográfico.</p></div><div className="text-right"><div className="ui-data-label">Tensão com Planalto</div><div className={`text-2xl font-black ${tone(100-(stf?.tensaoInstitucional||0))}`}>{Math.round(stf?.tensaoInstitucional||0)}</div></div></header>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mx-auto mb-3 max-w-[260px]">{presidente&&<CourtSeat member={presidente} onOpen={setDossier}/>}</div>
-          <div className="grid gap-3 2xl:grid-cols-2"><Turma title="1ª Turma" members={turma1} onOpen={setDossier}/><Turma title="2ª Turma" members={turma2} onOpen={setDossier}/></div>
-          <div className="mt-3 rounded-xl border border-border bg-panel/35 p-3 text-[10px] leading-relaxed text-muted">O desenho segue a lógica institucional do STF: Plenário com Presidência destacada e duas Turmas de cinco cadeiras. A campanha começa com uma vaga, que você pode preencher mediante indicação e aprovação do Senado.</div>
+          <Turma title={turmaVisivel.title} members={turmaVisivel.members} onOpen={setDossier} index={turmaAtiva} total={turmas.length} onPrev={()=>navegarTurma(-1)} onNext={()=>navegarTurma(1)}/>
+          <div className="mt-3 rounded-xl border border-border bg-panel/35 p-3 text-[10px] leading-relaxed text-muted">O Plenário mantém a Presidência em destaque. As Turmas são exibidas uma por vez para preservar nomes, funções e perfis dos ministros; use as setas para alternar entre os colegiados. A campanha começa com uma vaga, preenchida mediante indicação presidencial e aprovação do Senado.</div>
         </div>
       </section>
       <aside className="min-h-0 overflow-y-auto rounded-2xl border border-border bg-card/65 p-4"><div className="ui-kicker">Controle constitucional</div><h3 className="mt-1 text-lg font-black">Processos e indicação</h3>{pending?<div className="mt-4 rounded-2xl border border-info/30 bg-info/5 p-4"><div className="text-[9px] font-black uppercase text-info">Indicação no Senado</div><div className="mt-2 flex items-center gap-3"><PoliticalAvatar name={pending.nome} seed={pending.avatar||pending.id} size={52}/><div><div className="font-black">{pending.nome}</div><div className="text-xs text-muted">projeção {pending.votosProjetados}/81 · precisa de 41</div></div></div><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={votar} className="ui-btn-primary justify-center"><Vote size={15}/> Submeter ao Plenário</button><button onClick={()=>setDossier(pending)} className="ui-btn-secondary justify-center"><BookOpen size={14}/> Dossiê</button></div></div>:vagas>0?<div className="mt-4 rounded-2xl border border-warning/25 bg-warning/5 p-4"><div className="font-black text-warning">Há {vagas} vaga(s) no Supremo.</div><p className="mt-2 text-xs text-muted">A escolha muda a Corte por muitos anos. Um nome fácil de aprovar pode ser menos independente; um jurista prestigiado pode exigir mais capital político.</p><button onClick={()=>setCandidate(candidatosSTF[0]||null)} className="ui-btn-secondary mt-3">Abrir lista de indicáveis</button></div>:<div className="mt-4 rounded-2xl border border-success/20 bg-success/5 p-4 text-sm text-success"><CheckCircle2 className="mr-2 inline" size={16}/> Corte completa.</div>}

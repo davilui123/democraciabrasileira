@@ -28,8 +28,7 @@ import { construirPrograma, programaParaLei, avaliarMesPrograma, simularDesenhoP
 import { comunidadePulsoSeed } from '../data/seed/comunidadePulso.js';
 import { oposicaoSeed } from '../data/seed/oposicao.js';
 import { instituicoesSeed, candidatosSTFSeed } from '../data/seed/instituicoes.js';
-import { eventosFederativosSeed } from '../data/seed/eventosFederativos.js';
-import { montarEventoFederativo, sortearEventoFederativo, criarProcessoSTF, julgarProcessosSTF, projetarVotosSTF } from '../game/institutionEngine.js';
+import { sortearEventoFederativo, criarProcessoSTF, julgarProcessosSTF, projetarVotosSTF } from '../game/institutionEngine.js';
 import { tributosExecutivosSeed, reformasTributariasSeed, medidasEconomicasSeed, financiamentosEconomicosSeed, estrategiasDividaSeed } from '../data/seed/economiaPolitica.js';
 import { POLITICA_ECONOMICA_INICIAL, aplicarMudancaTributaria, calcularPressaoTributaria, detectarSituacaoEconomica, custoMedioDivida } from '../game/economyPolicyEngine.js';
 import { conquistasSeed } from '../data/seed/conquistas.js';
@@ -42,7 +41,7 @@ import { empresasVisitasSeed } from '../data/seed/empresasVisitas.js';
 import { COMERCIO_INICIAL, criarOportunidadeVisita, processarComercioMensal, ajustarTarifaSetorial } from '../game/tradeEngine.js';
 import { criarAgendaCalendarioInicial, criarConviteVisitaInternacional, criarConviteMidiaCalendario, criarConviteGovernadorCalendario, criarConviteEmpresarialCalendario, compromissosNoTurno, dataDoTurno, isoData } from '../game/agendaEngine.js';
 import { criarEstadoEleitoralInicial, faseEleitoralPorData, diasParaPrimeiroTurno, processarMesEleitoral, atualizarPesquisaEleitoral as recalcularPesquisaEleitoral, prepararVicePool, escolherVice, aplicarOfertaConvencao, finalizarConvencao, mudarFiliacaoEleitoral, executarCaptacao, executarAcaoEleitoral, apoiarCorridaEstadual, resolverDebate, alterarPosicaoEleitoral, simularPrimeiroTurno, simularSegundoTurno, getParty } from '../game/electionEngine.js';
-import { cutscenePorId } from '../data/seed/cutscenes.js';
+import { cutscenePorEvento, cutscenePorId } from '../data/seed/cutscenes.js';
 
 // =================================================================================
 // 1. CONSTANTES GLOBAIS
@@ -643,6 +642,7 @@ const useGameStore = create((set, get) => ({
         oposicao: state.oposicao,
       };
       const novosEventos = [];
+      let gruposSociais = state.gruposSociais;
 
       const cargos = state.cargos.map(cargo => {
         const ministro = state.nomeacoes.find(n => n.cargoId === cargo.id);
@@ -729,6 +729,52 @@ const useGameStore = create((set, get) => ({
         return { ...m, lealdade, eficacia };
       });
 
+      // Fase 4.8.3 — um gabinete vazio deixa de ser uma escolha sem custo.
+      // Janeiro funciona como montagem inicial; a partir do segundo mês, vacâncias
+      // cobram coordenação, confiança e popularidade de forma progressiva.
+      const vagas = cargos.filter(c => !nomeacoes.some(n => n.cargoId === c.id));
+      const vagasCriticas = vagas.filter(c => c.prioridade === 'alta');
+      if (vagas.length) {
+        const nomesCriticos = vagasCriticas.slice(0, 3).map(c => c.nome).join(', ');
+        if (state.turno <= 1) {
+          novosEventos.push(`🧩 Montagem do governo: ${vagas.length} ministério(s) ainda aguardam titular${nomesCriticos ? ` — prioridade em ${nomesCriticos}` : ''}.`);
+        } else {
+          const pesoVagas = (vagas.length + vagasCriticas.length * 0.45) / Math.max(1, cargos.length);
+          const maturacao = Math.min(1.75, 0.65 + (state.turno - 2) * 0.22);
+          const desgaste = Math.min(3.8, pesoVagas * maturacao * 1.9);
+          gruposSociais = aplicarImpactoGrupos(gruposSociais, {
+            periferia: -desgaste,
+            sindicalistas: -desgaste * 0.8,
+            mercado: -desgaste * 0.9,
+            agro: -desgaste * 0.55,
+            evangelicos: -desgaste * 0.5,
+            militares: -desgaste * 0.55,
+            universitarios: -desgaste * 0.65,
+          });
+          efeitos.popularidade = { ...efeitos.popularidade, geral: clamp(aprovacaoNacional(gruposSociais)) };
+          efeitos.climaGoverno = clamp(efeitos.climaGoverno - Math.min(5, 1 + vagasCriticas.length * 0.35));
+          efeitos.institucional = {
+            ...efeitos.institucional,
+            instabilidadePolitica: clamp((efeitos.institucional?.instabilidadePolitica || 0) + Math.min(4, pesoVagas * 2.4)),
+            previsibilidadeEconomica: clamp((efeitos.institucional?.previsibilidadeEconomica || 80) - Math.min(3, pesoVagas * 1.8)),
+          };
+          if (vagas.some(c => c.id === 'm_casacivil')) {
+            efeitos.climaGoverno = clamp(efeitos.climaGoverno - 2);
+            efeitos.capitalPolitico = clamp(efeitos.capitalPolitico - 1);
+          }
+          if (vagas.some(c => c.id === 'm_fazenda')) {
+            efeitos.economia = {
+              ...efeitos.economia,
+              confiancaMercado: clamp((efeitos.economia?.confiancaMercado || 50) - 2.5 * maturacao),
+              riscoPais: Math.max(0, (efeitos.economia?.riscoPais || 250) + Math.round(5 * maturacao)),
+            };
+          }
+          if (vagas.some(c => c.id === 'm_exteriores')) efeitos.mundo = { ...efeitos.mundo, softPowerBrasil: clamp((efeitos.mundo?.softPowerBrasil || 50) - 1) };
+          if (vagas.some(c => c.id === 'm_justica') || vagas.some(c => c.id === 'm_defesa')) efeitos.institucional = { ...efeitos.institucional, instabilidadePolitica: clamp((efeitos.institucional?.instabilidadePolitica || 0) + 1) };
+          novosEventos.push(`🚨 Governo incompleto: ${vagas.length} ministério(s) sem titular${vagasCriticas.length ? `, ${vagasCriticas.length} em áreas estratégicas` : ''}. A vacância já reduz coordenação e confiança.`);
+        }
+      }
+
       const novaLigacao = state.ligacaoMinisterial || (Math.random() < 0.48
         ? sortearLigacao({ nomeacoes, resolvidos: state.eventosMinisteriaisResolvidos || [], turno: state.turno })
         : null);
@@ -737,6 +783,7 @@ const useGameStore = create((set, get) => ({
         cargos,
         nomeacoes,
         ligacaoMinisterial: novaLigacao,
+        gruposSociais,
         ...efeitos,
         eventosRecentes: [...novosEventos.reverse(), ...state.eventosRecentes].slice(0, 18),
       };
@@ -2128,8 +2175,18 @@ const useGameStore = create((set, get) => ({
     const state=get();
     const primeiro=!(state.historicoEventosFederativos||[]).length;
     if(state.eventoFederativoAtivo||(!primeiro&&state.turno%2===0))return;
-    const ev=primeiro?montarEventoFederativo(eventosFederativosSeed[0],state.estados,state.nomeacoes,state.cargos):sortearEventoFederativo({turno:state.turno,estados:state.estados,historico:state.historicoEventosFederativos,nomeacoes:state.nomeacoes,cargos:state.cargos});
-    if(ev)set(s=>({eventoFederativoAtivo:{...ev,criadoNoTurno:s.turno+1},eventosRecentes:[`🚨 Crise federativa em ${ev.estado}: ${ev.titulo}`,...s.eventosRecentes].slice(0,18)}));
+    const ev=sortearEventoFederativo({turno:state.turno,estados:state.estados,historico:state.historicoEventosFederativos,nomeacoes:state.nomeacoes,cargos:state.cargos});
+    if(!ev)return;
+    const scene=cutscenePorEvento(ev.baseId||ev.id);
+    set(s=>{
+      const jaVista=scene&&(s.cutscenesVistas||[]).includes(scene.id);
+      const jaPendente=scene&&(s.cutscenesPendentes||[]).some(c=>c.id===scene.id);
+      return {
+        eventoFederativoAtivo:{...ev,criadoNoTurno:s.turno+1},
+        cutscenesPendentes:scene&&!jaVista&&!jaPendente?[...(s.cutscenesPendentes||[]),scene]:(s.cutscenesPendentes||[]),
+        eventosRecentes:[`🚨 Crise federativa em ${ev.estado}: ${ev.titulo}`,...s.eventosRecentes].slice(0,18),
+      };
+    });
   },
 
   processarTurnoOposicao: () => {
@@ -2298,6 +2355,12 @@ const useGameStore = create((set, get) => ({
     });
     saveGame(get());
     return {ok:true,post,efeito};
+  },
+
+  limparNotificacoes: () => {
+    set(state => ({ redeSocial: { ...state.redeSocial, notificacoes: [] } }));
+    saveGame(get());
+    return { ok:true };
   },
 
   interagirPulso: (postId, acao='repost') => {
@@ -2874,13 +2937,7 @@ const useGameStore = create((set, get) => ({
       };
     });
 
-    // Fase 4.8.2 — teste piloto: a primeira virada mensal abre a cutscene do ICMS de Isabela.
-    // As demais cenas já estão catalogadas e podem ser disparadas por condições/eventos futuros.
-    const aposVirada=get();
-    if(aposVirada.turno===2 && !(aposVirada.cutscenesVistas||[]).includes('gov-sp-i1') && !(aposVirada.cutscenesPendentes||[]).some(c=>c.id==='gov-sp-i1')){
-      const cenaPiloto=cutscenePorId('gov-sp-i1');
-      if(cenaPiloto) set(current=>({cutscenesPendentes:[...(current.cutscenesPendentes||[]),cenaPiloto]}));
-    }
+    // Acontecimentos audiovisuais agora entram apenas quando o fato político correspondente ocorre.
 
     get().processarTurnoEleitoral();
     get().gerarConvitesAgendaMensal();

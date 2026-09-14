@@ -24,12 +24,12 @@ export function montarEventoFederativo(base, estados=[], nomeacoes=[], cargos=[]
   };
 }
 
-export function sortearEventoFederativo({turno=1,estados=[],historico=[],nomeacoes=[],cargos=[]}){
+export function sortearEventoFederativo({turno=1,estados=[],historico=[],nomeacoes=[],cargos=[],rng=Math.random}){
   const usados=new Set((historico||[]).slice(0,14).map(e=>e.baseId||e.id));
   const elegiveis=eventosFederativosSeed.filter(e=>!usados.has(e.id));
   const pool=elegiveis.length?elegiveis:eventosFederativosSeed;
-  // Determinístico por turno para tornar testes reproduzíveis.
-  const idx=((turno*7)+(turno%5)*3)%pool.length;
+  // A seleção voltou a ser realmente aleatória. O parâmetro rng existe para QA reproduzível.
+  const idx=Math.max(0,Math.min(pool.length-1,Math.floor((rng?.() ?? Math.random())*pool.length)));
   const event=montarEventoFederativo(pool[idx],estados,nomeacoes,cargos);
   return event?{...event,baseId:pool[idx].id,criadoNoTurno:turno}:null;
 }
