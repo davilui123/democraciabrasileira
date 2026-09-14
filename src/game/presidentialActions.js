@@ -1,0 +1,157 @@
+import {
+  BadgeDollarSign,
+  Building2,
+  Handshake,
+  Landmark,
+  Megaphone,
+  Route,
+  Scale,
+  ShieldCheck,
+} from 'lucide-react';
+
+export const PRESIDENTIAL_AREAS = {
+  povo: { id: 'povo', label: 'Ruas & Opinião', shortLabel: 'Ruas' },
+  economia: { id: 'economia', label: 'Economia & Mercado', shortLabel: 'Mercado' },
+  congresso: { id: 'congresso', label: 'Congresso', shortLabel: 'Congresso' },
+  instituicoes: { id: 'instituicoes', label: 'Instituições', shortLabel: 'STF' },
+  governo: { id: 'governo', label: 'Máquina de Governo', shortLabel: 'Governo' },
+  mundo: { id: 'mundo', label: 'Projeção Internacional', shortLabel: 'Mundo' },
+};
+
+// Os efeitos são intencionalmente pequenos e cruzados. A ideia é que nenhuma ação
+// seja uma escolha obviamente correta: governar desloca coalizões e cria custos.
+export const PRESIDENTIAL_ACTIONS = [
+  {
+    id: 'mutirao_social',
+    area: 'povo',
+    titulo: 'Mutirão Social Emergencial',
+    resumo: 'Libera uma resposta rápida a renda, alimentos e serviços essenciais.',
+    icon: Handshake,
+    pontos: 1,
+    custoOrcamento: 650,
+    efeitos: [
+      { tipo: 'good', texto: '+6 aprovação popular de baixa renda' },
+      { tipo: 'good', texto: '+2 aprovação geral' },
+      { tipo: 'bad', texto: '-3 confiança do mercado' },
+      { tipo: 'bad', texto: 'R$ 650 mi de pressão sobre o primário' },
+    ],
+  },
+  {
+    id: 'pronunciamento_nacional',
+    area: 'povo',
+    titulo: 'Pronunciamento em Rede Nacional',
+    resumo: 'Você assume a narrativa e tenta reorganizar a percepção pública do governo.',
+    icon: Megaphone,
+    pontos: 1,
+    custoCapital: 4,
+    efeitos: [
+      { tipo: 'good', texto: 'Pode recuperar até +4 de aprovação' },
+      { tipo: 'neutral', texto: 'Resultado depende do clima do governo' },
+      { tipo: 'bad', texto: '-4 capital político' },
+    ],
+  },
+  {
+    id: 'ancora_fiscal',
+    area: 'economia',
+    titulo: 'Sinalização Fiscal',
+    resumo: 'Contém despesas discricionárias e entrega previsibilidade aos agentes econômicos.',
+    icon: BadgeDollarSign,
+    pontos: 1,
+    efeitos: [
+      { tipo: 'good', texto: '+7 confiança do mercado' },
+      { tipo: 'good', texto: '-0,2 p.p. de inflação' },
+      { tipo: 'bad', texto: '-2 aprovação entre sindicatos' },
+      { tipo: 'neutral', texto: 'R$ 400 mi de economia primária' },
+    ],
+  },
+  {
+    id: 'plano_infraestrutura',
+    area: 'economia',
+    titulo: 'Plano Nacional de Infraestrutura',
+    resumo: 'Concentra recursos em obras com efeito econômico e político de médio prazo.',
+    icon: Route,
+    pontos: 2,
+    custoOrcamento: 1200,
+    efeitos: [
+      { tipo: 'good', texto: '+0,18 p.p. no impulso do PIB' },
+      { tipo: 'good', texto: '+2 aprovação geral' },
+      { tipo: 'good', texto: '+3 confiança do mercado' },
+      { tipo: 'bad', texto: 'R$ 1,2 bi de investimento com impacto fiscal' },
+    ],
+  },
+  {
+    id: 'rodada_lideres',
+    area: 'congresso',
+    titulo: 'Rodada com Líderes',
+    resumo: 'Abre o gabinete para negociar pauta, espaço político e previsibilidade de votação.',
+    icon: Landmark,
+    pontos: 1,
+    custoCapital: 8,
+    efeitos: [
+      { tipo: 'good', texto: '+9 apoio do centro' },
+      { tipo: 'good', texto: '+5 apoio dos independentes' },
+      { tipo: 'bad', texto: '-8 capital político' },
+      { tipo: 'neutral', texto: 'Aumenta a governabilidade no curto prazo' },
+    ],
+  },
+  {
+    id: 'pacto_institucional',
+    area: 'instituicoes',
+    titulo: 'Pacto entre Poderes',
+    resumo: 'Reúne Planalto, Congresso e Judiciário para reduzir ruído e risco jurídico.',
+    icon: Scale,
+    pontos: 1,
+    custoCapital: 5,
+    efeitos: [
+      { tipo: 'good', texto: '-12 tensão com o STF' },
+      { tipo: 'good', texto: '-9 tensão institucional' },
+      { tipo: 'good', texto: '+3 respeito constitucional' },
+      { tipo: 'bad', texto: '-5 capital político' },
+    ],
+  },
+  {
+    id: 'choque_gestao',
+    area: 'governo',
+    titulo: 'Sala de Gestão Intensiva',
+    resumo: 'Você chama os ministros para metas, cobrança e coordenação direta do núcleo central.',
+    icon: Building2,
+    pontos: 1,
+    custoCapital: 3,
+    efeitos: [
+      { tipo: 'good', texto: '+7 clima do governo' },
+      { tipo: 'good', texto: 'Reduz atrito entre ministérios' },
+      { tipo: 'bad', texto: '-3 capital político' },
+    ],
+  },
+  {
+    id: 'operacao_integridade',
+    area: 'governo',
+    titulo: 'Operação Integridade',
+    resumo: 'Auditoria coordenada em contratos e cargos sensíveis com alto custo interno.',
+    icon: ShieldCheck,
+    pontos: 1,
+    custoCapital: 6,
+    efeitos: [
+      { tipo: 'good', texto: '+4 credibilidade democrática' },
+      { tipo: 'good', texto: '+2 aprovação de classe média' },
+      { tipo: 'bad', texto: '-5 clima do governo' },
+      { tipo: 'bad', texto: '-6 capital político' },
+    ],
+  },
+  {
+    id: 'ofensiva_diplomatica',
+    area: 'mundo',
+    titulo: 'Ofensiva Diplomática',
+    resumo: 'Uma agenda de chefes de Estado projeta o Brasil e abre canais econômicos.',
+    icon: Handshake,
+    pontos: 1,
+    custoOrcamento: 250,
+    efeitos: [
+      { tipo: 'good', texto: '+9 soft power do Brasil' },
+      { tipo: 'good', texto: '+2 confiança do mercado' },
+      { tipo: 'bad', texto: 'R$ 250 mi de impacto fiscal' },
+    ],
+  },
+];
+
+export const getPresidentialAction = (id) => PRESIDENTIAL_ACTIONS.find((acao) => acao.id === id);

@@ -1,0 +1,12 @@
+export const agendaPresidencialOpcoesSeed = [
+  {id:'ruas',tipo:'domestica',titulo:'Agenda popular',subtitulo:'Bairros, serviços e movimentos sociais',descricao:'Visitas de rua, equipamentos públicos e encontros com lideranças comunitárias.',efeito:'Aproxima periferia e base social; cria cobranças futuras.',tags:['periferia','social']},
+  {id:'producao',tipo:'economica',titulo:'Agenda produtiva',subtitulo:'Indústria, agro e exportadores',descricao:'Rodada com produtores, indústria e cadeias exportadoras para destravar investimento.',efeito:'Melhora ambiente produtivo; pode gerar contrapartidas fiscais.',tags:['mercado','agro','exportacao']},
+  {id:'governadores',tipo:'federativa',titulo:'Fórum de governadores',subtitulo:'Pactos, obras e coalizão territorial',descricao:'Reunião com governadores para alinhar obras, repasses e apoio político.',efeito:'Fortalece federação e Congresso; cria compromissos de execução.',tags:['federacao','congresso']},
+  {id:'ciencia',tipo:'estrategica',titulo:'Ciência & inovação',subtitulo:'Universidades, startups e laboratórios',descricao:'Encontro com ciência e tecnologia para acelerar projetos de longo prazo.',efeito:'Melhora inovação; pode virar compromisso orçamentário.',tags:['universitarios','tecnologia']},
+  {id:'imprensa',tipo:'comunicacao',titulo:'Entrevista nacional',subtitulo:'TV, portal, podcast ou Pulso',descricao:'Uma grande exposição pública para tentar controlar a narrativa política.',efeito:'Alcance alto; declarações voltam a ser cobradas depois.',tags:['midia','pulso']},
+  {id:'congresso',tipo:'politica',titulo:'Café com lideranças',subtitulo:'Câmara, Senado e relatores',descricao:'Rodada reservada com líderes, presidentes de comissão e relatores.',efeito:'Gera Poder de Bastidor e reduz atrito legislativo.',tags:['congresso','coalizao']},
+  {id:'empresas',tipo:'economica',titulo:'Conselho de investimento',subtitulo:'Empresas públicas e privadas',descricao:'Reunião com CEOs, estatais e investidores para projetos, PPPs e expansão produtiva.',efeito:'Pode revelar novos investidores e acelerar parcerias.',tags:['empresas','investimento']},
+  {id:'gabinete',tipo:'governo',titulo:'Conselho de Governo',subtitulo:'Ministros e execução',descricao:'Dia de despacho aprofundado para cobrar entregas e resolver conflitos entre pastas.',efeito:'Melhora coordenação e execução ministerial.',tags:['ministerios','gestao']},
+];
+
+export const AGENDA_SLOTS_MENSAIS = 4;

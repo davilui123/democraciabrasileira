@@ -1,0 +1,17 @@
+// Fase 4.2 — estrutura compacta do gabinete. As pastas são abstrações jogáveis, não uma réplica literal da Esplanada.
+export const ministeriosSeed = [
+  { id:'m_casacivil', nome:'Casa Civil', pasta:'Coordenação', descricao:'Coordena governo, agenda presidencial e relação entre ministérios.', salarioBase:260, prioridadePadrao:'alta', problemasBase:['politica'], icone:'landmark' },
+  { id:'m_fazenda', nome:'Fazenda', pasta:'Economia', descricao:'Política fiscal, arrecadação, dívida e coordenação econômica.', salarioBase:500, prioridadePadrao:'alta', problemasBase:['tecnica','politica'], icone:'wallet' },
+  { id:'m_saude', nome:'Saúde', pasta:'Social', descricao:'SUS, vigilância sanitária, vacinação e assistência nacional.', salarioBase:1200, prioridadePadrao:'alta', problemasBase:['tecnica','politica','midia'], icone:'heart-pulse' },
+  { id:'m_educacao', nome:'Educação', pasta:'Social', descricao:'Educação básica, superior, técnica, pesquisa e formação docente.', salarioBase:900, prioridadePadrao:'alta', problemasBase:['tecnica','politica'], icone:'graduation-cap' },
+  { id:'m_justica', nome:'Justiça', pasta:'Estado', descricao:'Segurança pública, direitos, Polícia Federal e política criminal.', salarioBase:400, prioridadePadrao:'alta', problemasBase:['tecnica','politica'], icone:'scale' },
+  { id:'m_defesa', nome:'Defesa', pasta:'Estado', descricao:'Forças Armadas, soberania, inteligência e projetos estratégicos.', salarioBase:800, prioridadePadrao:'alta', problemasBase:['tecnica','politica'], icone:'shield' },
+  { id:'m_transp', nome:'Transportes', pasta:'Infraestrutura', descricao:'Rodovias, ferrovias, portos, concessões e logística nacional.', salarioBase:600, prioridadePadrao:'alta', problemasBase:['tecnica','politica'], icone:'train-front' },
+  { id:'m_meioamb', nome:'Meio Ambiente', pasta:'Setorial', descricao:'Proteção ambiental, clima, fiscalização e desenvolvimento sustentável.', salarioBase:180, prioridadePadrao:'alta', problemasBase:['tecnica','politica','midia'], icone:'leaf' },
+  { id:'m_agro', nome:'Agricultura', pasta:'Produção', descricao:'Agronegócio, agricultura familiar, defesa sanitária e abastecimento.', salarioBase:480, prioridadePadrao:'normal', problemasBase:[], icone:'sprout' },
+  { id:'m_social', nome:'Desenvolvimento Social', pasta:'Social', descricao:'Renda, assistência, combate à fome e proteção social.', salarioBase:720, prioridadePadrao:'normal', problemasBase:[], icone:'hand-heart' },
+  { id:'m_ciencia', nome:'Ciência & Tecnologia', pasta:'Estratégico', descricao:'Pesquisa, inovação, conectividade, IA e soberania tecnológica.', salarioBase:340, prioridadePadrao:'normal', problemasBase:[], icone:'atom' },
+  { id:'m_esportes', nome:'Esportes', pasta:'Sociedade', descricao:'Esporte de base, alto rendimento, integridade esportiva e legado social.', salarioBase:160, prioridadePadrao:'normal', problemasBase:[], icone:'medal' },
+  { id:'m_cultura', nome:'Cultura', pasta:'Sociedade', descricao:'Cinema, patrimônio, economia criativa, artes e projeção cultural do país.', salarioBase:210, prioridadePadrao:'normal', problemasBase:[], icone:'clapperboard' },
+  { id:'m_exteriores', nome:'Relações Exteriores', pasta:'Estado', descricao:'Itamaraty, diplomacia, comércio político, organismos multilaterais e representação do Brasil no mundo.', salarioBase:320, prioridadePadrao:'alta', problemasBase:['tecnica','politica','midia'], icone:'globe-2' },
+];

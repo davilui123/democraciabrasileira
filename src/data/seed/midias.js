@@ -1,0 +1,17 @@
+export const midiasSeed = [
+  { id:'global', nome:'Global', sigla:'GLOBAL', canais:['TV','Rádio','GNOW'], perfil:'@Global', alcance:92, linha:'institucional', tomBase:0, formatos:['Jornal Global','Sabatina GNOW','Entrevista Especial'], debates:['Debate Nacional Global','Confronto GNOW'], descricao:'Maior rede do país, com telejornalismo, rádio e o portal GNOW.' },
+  { id:'n1', nome:'N1', sigla:'N1', canais:['Portal','YouTV','PodN1'], perfil:'@N1', alcance:78, linha:'digital', tomBase:-4, formatos:['Frente a Frente N1','PodN1','Live YouTV'], debates:['Debate YouTV','Mesa de Líderes N1'], descricao:'Ecossistema digital agressivo, veloz e orientado a debate e reação.' },
+  { id:'mundi', nome:'Mundi', sigla:'MUNDI', canais:['TV','Revista eletrônica'], perfil:'@Mundi', alcance:66, linha:'analítica', tomBase:1, formatos:['Mundi Entrevista','Mesa Mundi','Capa da Semana'], debates:['Mundi 360','Debate de Ideias Mundi'], descricao:'Rede de análise, negócios, cultura e política internacional.' },
+  { id:'canal_geral', nome:'Canal Geral', sigla:'CG', canais:['TV','Internet','Pulso'], perfil:'@CanalGeral', alcance:84, linha:'popular', tomBase:-1, formatos:['Cara a Cara','Pergunta Geral','Ao Vivo no Pulso'], debates:['Duelo Geral','Arena Pulso'], descricao:'Rede de grande audiência popular, muito ativa na rede social Pulso.' },
+];
+
+export const postsIniciais = [
+  { id:'p_global_1', autorId:'global', texto:'Novo governo inicia mandato sob expectativa por sinais claros na economia e no Congresso.', tema:'governo', sentimento:0 },
+  { id:'p_n1_1', autorId:'n1', texto:'Primeiro mês: o Planalto terá maioria para governar ou viverá de acordos de última hora?', tema:'congresso', sentimento:-1 },
+  { id:'p_mundi_1', autorId:'mundi', texto:'Mercados observam composição da equipe econômica e compromisso com crescimento sustentável.', tema:'economia', sentimento:0 },
+  { id:'p_cg_1', autorId:'canal_geral', texto:'O que muda na vida real? Seguidores cobram emprego, saúde e segurança já nos primeiros meses.', tema:'social', sentimento:-1 },
+  { id:'p_com_1', autorId:'bia_usp', autor:'Beatriz Nascimento', handle:'@bia.no.campus', grupo:'universitarios', uf:'SP', avatar:'pulso-bia-usp', texto:'Equipe nova, promessas grandes. Quero ver orçamento de ciência e ensino técnico sobreviver ao primeiro aperto fiscal.', tema:'comunidade', tipo:'comentario', sentimento:0, alcance:430000 },
+  { id:'p_com_2', autorId:'joao_agro', autor:'João Pedro Arantes', handle:'@joaodocampo', grupo:'agro', uf:'MT', avatar:'pulso-joao-mt', texto:'Se destravar estrada, ferrovia e crédito, já começa melhor que muito governo por aí.', tema:'comunidade', tipo:'comentario', sentimento:1, alcance:690000 },
+  { id:'p_com_3', autorId:'dona_celia', autor:'Célia dos Santos', handle:'@celiadavila', grupo:'periferia', uf:'RJ', avatar:'pulso-celia-rj', texto:'A posse foi bonita. Agora quero saber da fila do posto, do preço da comida e do ônibus.', tema:'comunidade', tipo:'comentario', sentimento:0, alcance:610000 },
+  { id:'p_op_1', autorId:'caio_valente', autor:'Caio Valente', handle:'@CaioValente', grupo:'oposicao', uf:'MG', avatar:'op-caio-valente', texto:'A eleição acabou. A fiscalização do novo governo começa hoje.', tema:'oposicao', sentimento:-1, alcance:3100000 },
+];

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" fill="none">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A"/>
+      <stop offset="1" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="220" y1="140" x2="1380" y2="760" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4ED8" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#14B8A6" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" rx="40" fill="url(#g)"/>
+  <rect x="64" y="64" width="1472" height="772" rx="32" stroke="#334155" stroke-width="2"/>
+  <rect x="220" y="140" width="1160" height="620" rx="28" fill="url(#g2)" stroke="#475569" stroke-width="2" stroke-dasharray="10 10"/>
+  <g opacity="0.9">
+    <rect x="660" y="250" width="280" height="180" rx="24" fill="#0B1220" stroke="#64748B" stroke-width="3"/>
+    <rect x="710" y="300" width="180" height="18" rx="9" fill="#94A3B8" fill-opacity="0.85"/>
+    <rect x="710" y="338" width="130" height="18" rx="9" fill="#94A3B8" fill-opacity="0.55"/>
+    <path d="M720 403H880" stroke="#334155" stroke-width="18" stroke-linecap="round"/>
+    <path d="M800 209V251" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+    <path d="M760 228H840" stroke="#94A3B8" stroke-width="18" stroke-linecap="round"/>
+  </g>
+  <text x="800" y="540" text-anchor="middle" fill="#E2E8F0" font-size="54" font-family="Arial, Helvetica, sans-serif" font-weight="700">
+    Imagem institucional
+  </text>
+  <text x="800" y="596" text-anchor="middle" fill="#94A3B8" font-size="28" font-family="Arial, Helvetica, sans-serif">
+    Placeholder para organização internacional
+  </text>
+  <text x="800" y="666" text-anchor="middle" fill="#38BDF8" font-size="24" font-family="Arial, Helvetica, sans-serif" letter-spacing="4">
+    ONU • OEA • OMC • G20 • CSNU
+  </text>
+</svg>
