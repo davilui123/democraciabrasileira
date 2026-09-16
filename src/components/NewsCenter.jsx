@@ -15,21 +15,23 @@ import {
 } from 'lucide-react';
 import useGameStore from '../store/useGameStore';
 import { toast } from './sonner';
+import { LogoMark } from './VisualAsset';
 
 const cleanHeadline = (text='') => String(text).replace(/^[^\p{L}\p{N}]+/u, '').trim();
 const hashText = (text='') => [...String(text)].reduce((acc, char) => ((acc * 31) + char.charCodeAt(0)) >>> 0, 7);
 
 const routeForHeadline = (headline='') => {
   const text = headline.toLowerCase();
-  if (/stf|supremo|constitucional|senado aprova|senado rejeita/.test(text)) return 'instituicoes';
+  if (/stf|supremo|constitucional|tcu|tribunal de contas|pgr|procuradoria|banco central|controle externo|senado aprova|senado rejeita/.test(text)) return 'instituicoes';
   if (/congresso|câmara|senado|lei |veto|sancion|cpi|plenário/.test(text)) return 'congresso';
+  if (/rússia|moscou|china|pequim|eua|estados unidos|washington|alemanha|berlim|argentina|buenos aires|emirados|abu dhabi|índia|nova délhi|itamaraty|internacional|diplom|geopol|mercosul|terras raras|minerais críticos|tarifaço|sobretaxa/.test(text)) return 'mapa';
   if (/fazenda|inflação|selic|dívida|primário|fiscal|tribut|tarifa|risco-país/.test(text)) return 'economia';
   if (/governador|estado:|crise federativa|federativ|são paulo|repasse/.test(text)) return 'federacao';
   if (/ministério|ministro|pasta|conselho de governo/.test(text)) return 'ministerios';
   if (/programa|política pública/.test(text)) return 'programas';
   if (/estatal|empresa|parceria|ceitec/.test(text)) return 'estatais';
   if (/eleição|campanha|pesquisa|convenção|vice-presid/.test(text)) return 'eleicoes';
-  if (/itamaraty|internacional|diplom|visita presidencial|tratado|geopol/.test(text)) return 'mapa';
+  if (/visita presidencial|tratado/.test(text)) return 'mapa';
   return null;
 };
 
@@ -54,6 +56,7 @@ function SourceStamp({ media, headline }) {
   const branch = formats.length ? formats[hashText(headline) % formats.length] : media.nome;
   return (
     <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[.16em] text-muted">
+      <LogoMark src={media.logo} label={media.nome} kind="media" className="h-7 w-9 shrink-0 rounded-lg" />
       <span className="text-warning">{media.sigla || media.nome}</span>
       <span>·</span>
       <span>{branch}</span>
@@ -79,6 +82,10 @@ export default function NewsCenter({ onClose, onNavigate }) {
     stf,
     dataString,
     limparNotificacoes,
+    geopolitica = { pressoesDiplomaticas: [] },
+    paises = [],
+    responderPressaoDiplomatica,
+    politicalOrchestrator = { activeArcs: [], clusters: [], archive: [], priorityQueue: [] },
   } = useGameStore();
 
   const demandas = useMemo(() => cargos.filter(c => c.demandaAtual), [cargos]);
@@ -86,7 +93,10 @@ export default function NewsCenter({ onClose, onNavigate }) {
   const vagas = useMemo(() => cargos.filter(c => !nomeacoes.some(n => n.cargoId === c.id)), [cargos, nomeacoes]);
   const vagasCriticas = vagas.filter(c => c.prioridade === 'alta').length;
   const notificacoes = redeSocial.notificacoes || [];
-  const pendenciasCount = (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
+  const pressoesDiplomaticas=(geopolitica.pressoesDiplomaticas||[]).filter(p=>p.status==='pendente');
+  const pendenciasCount = (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + pressoesDiplomaticas.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
+  const membrosAgrupados=new Set((politicalOrchestrator.clusters||[]).flatMap(c=>c.memberIds||[]));
+  const enredosAtivos = [...(politicalOrchestrator.clusters||[]),...(politicalOrchestrator.activeArcs||[]).filter(a=>!membrosAgrupados.has(a.id))];
   const [tab, setTab] = useState('plantao');
 
   const mediaFor = (headline, index) => midias.length ? midias[(hashText(headline) + index) % midias.length] : null;
@@ -107,6 +117,11 @@ export default function NewsCenter({ onClose, onNavigate }) {
     if (result?.ok) toast.success(aceitou ? 'Compromisso confirmado na Agenda Presidencial.' : 'Convite recusado.');
     else toast.error(result?.motivo || 'Não foi possível responder ao convite.');
   };
+  const responderPressao = (pressaoId, opcaoId) => {
+    const result = responderPressaoDiplomatica?.(pressaoId, opcaoId);
+    if (result?.ok) toast.success('Resposta diplomática registrada.');
+    else toast.error(result?.motivo || 'Não foi possível responder à pressão externa.');
+  };
 
   return (
     <div className="fixed inset-0 z-[140] grid place-items-center bg-black/72 p-3 backdrop-blur-lg md:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -124,6 +139,7 @@ export default function NewsCenter({ onClose, onNavigate }) {
           <div className="ui-tabs w-fit">
             <button onClick={() => setTab('plantao')} className={`ui-tab ${tab === 'plantao' ? 'ui-tab-active' : ''}`}><Newspaper size={13} className="mr-1 inline" /> Plantão</button>
             <button onClick={() => setTab('pendencias')} className={`ui-tab ${tab === 'pendencias' ? 'ui-tab-active' : ''}`}><AlertTriangle size={13} className="mr-1 inline" /> Pendências {pendenciasCount > 0 && <span className="ml-1 rounded-full bg-danger px-1.5 py-0.5 text-[8px] text-white">{pendenciasCount}</span>}</button>
+            <button onClick={() => setTab('enredos')} className={`ui-tab ${tab === 'enredos' ? 'ui-tab-active' : ''}`}><Landmark size={13} className="mr-1 inline" /> Em curso {enredosAtivos.length > 0 && <span className="ml-1 rounded-full bg-info px-1.5 py-0.5 text-[8px] text-white">{enredosAtivos.length}</span>}</button>
             <button onClick={() => setTab('notificacoes')} className={`ui-tab ${tab === 'notificacoes' ? 'ui-tab-active' : ''}`}><BellRing size={13} className="mr-1 inline" /> Notificações {notificacoes.length > 0 && <span className="ml-1 rounded-full bg-warning px-1.5 py-0.5 text-[8px] text-black">{notificacoes.length}</span>}</button>
           </div>
         </div>
@@ -172,6 +188,17 @@ export default function NewsCenter({ onClose, onNavigate }) {
             <div className="space-y-4">
               <div><div className="ui-kicker">Decisão presidencial</div><h3 className="mt-1 text-xl font-black">Assuntos que não podem ficar só na manchete</h3></div>
 
+              {pressoesDiplomaticas.map(pressao => {
+                const pais=paises.find(p=>p.id===pressao.paisId);
+                return <section key={pressao.id} className="rounded-2xl border border-info/30 bg-info/5 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-info"><Radio size={14} /> Política externa · {pais?.nome||pressao.paisId}</div><span className="ui-chip">prazo: mês {pressao.prazoTurno}</span></div>
+                  <h4 className="mt-2 text-lg font-black">{pressao.titulo}</h4>
+                  <p className="mt-2 text-sm leading-relaxed text-text/75">{pressao.texto}</p>
+                  <div className="mt-4 grid gap-2 lg:grid-cols-3">{(pressao.opcoes||[]).map((op,index)=><button key={op.id} onClick={()=>responderPressao(pressao.id,op.id)} className="rounded-xl border border-border bg-card/65 p-3 text-left text-xs font-bold hover:border-info/40"><span className="mr-2 font-mono text-info">{String.fromCharCode(65+index)}</span>{op.titulo}<div className="mt-1 text-[10px] font-normal leading-relaxed text-muted">{op.descricao}</div></button>)}</div>
+                  <button onClick={()=>go('mapa')} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black text-info">Abrir dossiê geopolítico <ArrowRight size={12}/></button>
+                </section>;
+              })}
+
               {eventoFederativoAtivo && (
                 <section className="rounded-2xl border border-danger/30 bg-danger/5 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-danger"><Landmark size={14} /> Crise federativa · {eventoFederativoAtivo.estado}</div><span className="ui-chip text-danger">impacto ×{eventoFederativoAtivo.multiplicador?.toFixed?.(2) || '1.00'}</span></div>
@@ -217,6 +244,34 @@ export default function NewsCenter({ onClose, onNavigate }) {
               )}
 
               {pendenciasCount === 0 && <div className="rounded-3xl border border-success/25 bg-success/5 p-8 text-center"><Check size={24} className="mx-auto text-success" /><h4 className="mt-3 font-black">Mesa limpa</h4><p className="mt-1 text-sm text-muted">Não há decisões urgentes aguardando o Presidente.</p></div>}
+            </div>
+          )}
+
+          {tab === 'enredos' && (
+            <div>
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <div><div className="ui-kicker">Histórias emergentes</div><h3 className="mt-1 text-xl font-black">Crises e movimentos em curso</h3><p className="mt-1 text-xs text-muted">Aqui você vê por que um problema apareceu, como ele escalou e quais áreas já foram contaminadas.</p></div>
+                <span className="ui-chip">{enredosAtivos.length} ativo(s)</span>
+              </div>
+              <div className="space-y-4">
+                {enredosAtivos.slice().sort((a,b)=>(b.severity||0)-(a.severity||0)).map((arc,index)=>(
+                  <article key={arc.id} className={`rounded-3xl border p-4 ${index===0?'border-warning/35 bg-warning/5':'border-border bg-panel/42'}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[.14em] text-muted"><span className={index===0?'text-warning':'text-info'}>{arc.isCluster?'convergência de crises':(arc.category?.replaceAll('_',' ')||'sistema político')}</span><span>·</span><span>gravidade {Math.round(arc.severity||0)}/100</span></div><h4 className="mt-1 text-base font-black">{arc.title}</h4><p className="mt-1 text-xs leading-relaxed text-muted">{arc.summary}</p></div>
+                      <span className="ui-chip">{arc.stageLabel}</span>
+                    </div>
+                    <div className="mt-4 rounded-2xl border border-border bg-bg/35 p-3">
+                      <div className="ui-kicker">Por que isso aconteceu?</div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {[...(arc.causes||[]),...(arc.timeline||[])].slice(-6).map((step,i)=><React.Fragment key={`${arc.id}_step_${i}`}><span className="rounded-xl border border-border bg-card px-2.5 py-2 text-[10px] font-bold text-text/85">{step.label}</span>{i<[...(arc.causes||[]),...(arc.timeline||[])].slice(-6).length-1&&<ArrowRight size={12} className="text-muted"/>}</React.Fragment>)}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">{(arc.tags||[]).map(tag=><span key={tag} className="ui-chip">{tag}</span>)}</div>
+                  </article>
+                ))}
+                {!enredosAtivos.length&&<div className="rounded-3xl border border-dashed border-border p-8 text-center"><Check size={24} className="mx-auto text-success"/><h4 className="mt-3 font-black">Nenhuma crise encadeada no centro da agenda</h4><p className="mt-1 text-sm text-muted">Movimentos menores ainda podem ocorrer, mas nenhum enredo sistêmico está escalando agora.</p></div>}
+              </div>
+              {(politicalOrchestrator.archive||[]).length>0&&<div className="mt-6"><div className="ui-kicker">Histórico recente</div><div className="mt-2 grid gap-2 md:grid-cols-2">{(politicalOrchestrator.archive||[]).slice(0,6).map(arc=><div key={arc.id} className="rounded-2xl border border-border bg-panel/30 p-3"><div className="text-xs font-black">{arc.title}</div><div className="mt-1 text-[10px] text-muted">{arc.resolution||'Saiu do centro da agenda.'}</div></div>)}</div></div>}
             </div>
           )}
 

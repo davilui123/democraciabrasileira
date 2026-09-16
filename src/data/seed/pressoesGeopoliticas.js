@@ -1,0 +1,103 @@
+// Fase 4.9.2 — pressões autônomas da política externa.
+// Cenários ficcionais do universo do jogo inspirados em disputas geopolíticas plausíveis.
+
+export const pressoesGeopoliticasSeed = [
+  {
+    id:'ru_apoio_guerra', paisId:'ru', prioridade:86, categoria:'seguranca',
+    titulo:'Moscou cobra sinal político do Brasil',
+    manchete:'Rússia pressiona Planalto por apoio diplomático em meio à guerra',
+    local:'Moscou · Federação Russa', fonte:'Mundi Exterior',
+    texto:'O Kremlin pede que o Brasil rejeite novas sanções e adote linguagem mais favorável à posição russa em uma próxima votação multilateral. A cobrança vem acompanhada de lembretes sobre fertilizantes, energia nuclear e cooperação em defesa.',
+    condicao:'guerra', cooldown:9,
+    opcoes:[
+      {id:'mediar',titulo:'Reafirmar neutralidade e oferecer mediação',descricao:'Preserva margem de manobra e evita alinhamento automático.',tom:'Equilíbrio',efeitos:{relacoes:{ru:-2,us:1,de:1,fr:1},geopolitica:{credibilidadeDiplomatica:2,autonomiaEstrategica:2},mundo:{softPowerBrasil:1},grupos:{universitarios:.4,mercado:.2}}},
+      {id:'apoiar',titulo:'Apoiar a posição russa no fórum',descricao:'Atende Moscou, mas cobra preço com parceiros ocidentais.',tom:'Alinhamento',efeitos:{relacoes:{ru:11,us:-6,de:-5,fr:-4},geopolitica:{credibilidadeDiplomatica:-2,autonomiaEstrategica:-2},economia:{riscoPais:5},organizacoes:{brics:3},grupos:{agro:1,militares:1,universitarios:-1.2,mercado:-.5}}},
+      {id:'rejeitar',titulo:'Rejeitar a pressão publicamente',descricao:'Sinaliza autonomia, com risco de retaliação bilateral.',tom:'Confronto',efeitos:{relacoes:{ru:-12,us:3,de:2},geopolitica:{autonomiaEstrategica:3,credibilidadeDiplomatica:1},economia:{inflacao:.05},grupos:{agro:-1.2,militares:.5,universitarios:.5}}},
+    ],
+    silencio:{titulo:'Não responder à cobrança',efeitos:{relacoes:{ru:-6},geopolitica:{credibilidadeDiplomatica:-2},grupos:{mercado:-.3}}},
+  },
+  {
+    id:'cn_terras_raras', paisId:'cn', prioridade:92, categoria:'minerais',
+    titulo:'Pequim quer preferência em minerais críticos',
+    manchete:'China oferece pacote bilionário e pede preferência nas terras raras brasileiras',
+    local:'Pequim · República Popular da China', fonte:'N1 Mundo',
+    texto:'O governo chinês propõe financiamento, plantas de processamento e compras garantidas em troca de preferência de longo prazo sobre minerais críticos brasileiros. O Itamaraty alerta para impactos sobre autonomia industrial e relações com outras potências.',
+    condicao:'sempre', cooldown:10,
+    opcoes:[
+      {id:'preferencia',titulo:'Conceder preferência de longo prazo',descricao:'Acelera investimento, mas amarra parte da cadeia mineral a um único parceiro.',tom:'Acordo amplo',efeitos:{relacoes:{cn:10,us:-5,jp:-2,kr:-2},economia:{crescimentoPib:.08,confiancaMercado:3},geopolitica:{autonomiaEstrategica:-5},grupos:{mercado:1.2,universitarios:-.3}}},
+      {id:'consorcio',titulo:'Propor consórcio sem exclusividade',descricao:'Aceita capital chinês, mas mantém acesso aberto a outros investidores.',tom:'Diversificação',efeitos:{relacoes:{cn:5,us:1,jp:1,kr:1},economia:{crescimentoPib:.04,confiancaMercado:2},geopolitica:{autonomiaEstrategica:3,credibilidadeDiplomatica:2},grupos:{mercado:.8,universitarios:.5}}},
+      {id:'rejeitar',titulo:'Recusar preferência estratégica',descricao:'Preserva autonomia imediata, sacrificando parte do investimento anunciado.',tom:'Autonomia',efeitos:{relacoes:{cn:-9,us:2},economia:{confiancaMercado:-1},geopolitica:{autonomiaEstrategica:4},grupos:{universitarios:.4,mercado:-.5}}},
+    ],
+    silencio:{titulo:'Adiar sem resposta',efeitos:{relacoes:{cn:-5},economia:{confiancaMercado:-1},geopolitica:{credibilidadeDiplomatica:-1}}},
+  },
+  {
+    id:'us_tarifaco', paisId:'us', prioridade:95, categoria:'comercio',
+    titulo:'Washington ameaça tarifaço sobre produtos brasileiros',
+    manchete:'EUA ameaçam sobretaxa e exigem concessões comerciais do Brasil',
+    local:'Washington, D.C. · Estados Unidos', fonte:'Global Internacional',
+    texto:'A Casa Branca anuncia revisão tarifária que pode atingir aço, alumínio e produtos agroindustriais do Brasil. Em mensagem reservada, Washington oferece exceções se o Planalto aceitar uma negociação acelerada sobre comércio, tecnologia e compras governamentais.',
+    condicao:'sempre', cooldown:10,
+    opcoes:[
+      {id:'negociar',titulo:'Negociar cotas e exceções',descricao:'Tenta reduzir o choque comercial sem abrir uma guerra tarifária.',tom:'Pragmatismo',efeitos:{relacoes:{us:5},economia:{confiancaMercado:1,riscoPais:-2},geopolitica:{credibilidadeDiplomatica:1},grupos:{mercado:.8,agro:.5}}},
+      {id:'omc',titulo:'Levar o caso à OMC',descricao:'Internacionaliza a disputa e aposta em regras multilaterais.',tom:'Multilateral',efeitos:{relacoes:{us:-3,de:1,fr:1},geopolitica:{credibilidadeDiplomatica:3,autonomiaEstrategica:2},organizacoes:{omc:5},economia:{riscoPais:2},grupos:{mercado:.2,universitarios:.5}}},
+      {id:'retaliar',titulo:'Responder com tarifas recíprocas',descricao:'Eleva o custo político da medida americana, mas amplia o choque econômico.',tom:'Retaliação',efeitos:{relacoes:{us:-12},mundo:{tensaoGlobal:4},economia:{inflacao:.08,riscoPais:8,confiancaMercado:-3,crescimentoPib:-.05},geopolitica:{autonomiaEstrategica:2},grupos:{agro:1,sindicalistas:1,mercado:-1.5}}},
+    ],
+    silencio:{titulo:'Deixar a revisão avançar sem resposta',efeitos:{relacoes:{us:-4},economia:{confiancaMercado:-2,crescimentoPib:-.04},grupos:{agro:-.8,mercado:-.7}}},
+  },
+  {
+    id:'de_amazonia', paisId:'de', prioridade:68, categoria:'clima',
+    titulo:'Berlim condiciona capital verde à rastreabilidade',
+    manchete:'Alemanha cobra rastreabilidade ambiental para destravar novo pacote de investimentos',
+    local:'Berlim · Alemanha', fonte:'Canal Geral Mundo',
+    texto:'O governo alemão sinaliza que fundos e empresas europeias ampliarão investimentos no Brasil se houver um mecanismo verificável de rastreabilidade ambiental para cadeias agrícolas e minerais.',
+    condicao:'clima', cooldown:8,
+    opcoes:[
+      {id:'aceitar',titulo:'Aceitar mecanismo internacional',descricao:'Facilita capital verde, com maior escrutínio externo.',tom:'Cooperação',efeitos:{relacoes:{de:8,fr:4},mundo:{liderancaAmbiental:5,softPowerBrasil:2},economia:{confiancaMercado:2},grupos:{agro:-1,universitarios:1.2,mercado:.5}}},
+      {id:'brasileiro',titulo:'Criar mecanismo brasileiro equivalente',descricao:'Oferece rastreabilidade mantendo controle institucional doméstico.',tom:'Soberania cooperativa',efeitos:{relacoes:{de:4,fr:2},mundo:{liderancaAmbiental:3,softPowerBrasil:1},geopolitica:{autonomiaEstrategica:3,credibilidadeDiplomatica:2},grupos:{agro:-.3,universitarios:.8}}},
+      {id:'rejeitar',titulo:'Rejeitar condicionalidade externa',descricao:'Agrada setores resistentes, mas reduz acesso a capital europeu.',tom:'Resistência',efeitos:{relacoes:{de:-10,fr:-7},economia:{confiancaMercado:-2},geopolitica:{autonomiaEstrategica:2},grupos:{agro:1.2,universitarios:-1.2,mercado:-.5}}},
+    ],
+    silencio:{titulo:'Não apresentar mecanismo',efeitos:{relacoes:{de:-5,fr:-3},economia:{confiancaMercado:-1}}},
+  },
+  {
+    id:'ar_mercosul', paisId:'ar', prioridade:62, categoria:'regional',
+    titulo:'Buenos Aires pede flexibilização do Mercosul',
+    manchete:'Argentina pressiona Brasil por reforma da tarifa externa do Mercosul',
+    local:'Buenos Aires · Argentina', fonte:'N1 Mundo',
+    texto:'A Argentina busca apoio brasileiro para flexibilizar a tarifa externa comum e permitir novas exceções setoriais. Uruguai e Paraguai acompanham a posição do Planalto antes de definir seus próximos passos.',
+    condicao:'sempre', cooldown:8,
+    opcoes:[
+      {id:'flexibilizar',titulo:'Aceitar flexibilização controlada',descricao:'Reduz atrito regional, mas abre precedente dentro do bloco.',tom:'Concessão regional',efeitos:{relacoes:{ar:7,uy:3,py:3},organizacoes:{mercosul:4},geopolitica:{credibilidadeDiplomatica:1},grupos:{mercado:.5,agro:.3}}},
+      {id:'reformar',titulo:'Propor reforma ampla do bloco',descricao:'Transforma a pressão imediata em negociação institucional maior.',tom:'Reforma',efeitos:{relacoes:{ar:4,uy:2,py:2},organizacoes:{mercosul:6},geopolitica:{credibilidadeDiplomatica:3,autonomiaEstrategica:1},grupos:{mercado:.4}}},
+      {id:'endurecer',titulo:'Defender a tarifa atual',descricao:'Preserva a arquitetura existente e aumenta tensão com vizinhos.',tom:'Linha dura',efeitos:{relacoes:{ar:-9,uy:-3,py:-3},organizacoes:{mercosul:-3},geopolitica:{autonomiaEstrategica:1},grupos:{sindicalistas:.7,mercado:-.4}}},
+    ],
+    silencio:{titulo:'Adiar a resposta regional',efeitos:{relacoes:{ar:-4,uy:-1,py:-1},organizacoes:{mercosul:-1}}},
+  },
+  {
+    id:'ae_fundo_soberano', paisId:'ae', prioridade:56, categoria:'investimento',
+    titulo:'Fundo soberano oferece megainvestimento no Brasil',
+    manchete:'Emirados oferecem capital para infraestrutura e data centers com condições estratégicas',
+    local:'Abu Dhabi · Emirados Árabes Unidos', fonte:'Mundi Exterior',
+    texto:'Um fundo soberano propõe um pacote de infraestrutura, energia e data centers, condicionado a preferência em projetos futuros e garantias regulatórias de longo prazo.',
+    condicao:'mercado', cooldown:9,
+    opcoes:[
+      {id:'preferencia',titulo:'Aceitar pacote com preferência',descricao:'Maximiza entrada de capital, mas reduz competição futura.',tom:'Investimento rápido',efeitos:{relacoes:{ae:9},economia:{crescimentoPib:.1,confiancaMercado:3},geopolitica:{autonomiaEstrategica:-2},grupos:{mercado:1.2}}},
+      {id:'licitacao',titulo:'Abrir consórcio competitivo',descricao:'Mantém o investidor na mesa sem exclusividade.',tom:'Competição',efeitos:{relacoes:{ae:4},economia:{crescimentoPib:.05,confiancaMercado:2},geopolitica:{autonomiaEstrategica:2,credibilidadeDiplomatica:1},grupos:{mercado:.8}}},
+      {id:'recusar',titulo:'Recusar condições especiais',descricao:'Evita dependência contratual, com menor investimento imediato.',tom:'Cautela',efeitos:{relacoes:{ae:-6},geopolitica:{autonomiaEstrategica:2},economia:{confiancaMercado:-.5}}},
+    ],
+    silencio:{titulo:'Deixar proposta expirar',efeitos:{relacoes:{ae:-4},economia:{confiancaMercado:-.5}}},
+  },
+  {
+    id:'in_farmacos', paisId:'in', prioridade:51, categoria:'tecnologia',
+    titulo:'Índia propõe pacto de fármacos e tecnologia',
+    manchete:'Índia busca acordo de produção farmacêutica e transferência tecnológica com o Brasil',
+    local:'Nova Délhi · Índia', fonte:'Canal Geral Mundo',
+    texto:'Nova Délhi oferece joint ventures em medicamentos, vacinas e tecnologia digital. Em troca, pede acesso facilitado a compras públicas e reconhecimento regulatório acelerado.',
+    condicao:'sempre', cooldown:9,
+    opcoes:[
+      {id:'amplo',titulo:'Fechar acordo amplo',descricao:'Acelera produção e transferência tecnológica com concessões regulatórias.',tom:'Parceria estratégica',efeitos:{relacoes:{in:9},economia:{crescimentoPib:.06,confiancaMercado:1},geopolitica:{autonomiaEstrategica:2},grupos:{universitarios:1,mercado:.5}}},
+      {id:'piloto',titulo:'Começar por projeto-piloto',descricao:'Testa a cooperação com menor risco e menor retorno imediato.',tom:'Gradualismo',efeitos:{relacoes:{in:4},economia:{crescimentoPib:.02},geopolitica:{credibilidadeDiplomatica:1},grupos:{universitarios:.5}}},
+      {id:'recusar',titulo:'Manter regras atuais',descricao:'Evita concessões, mas perde janela de cooperação tecnológica.',tom:'Status quo',efeitos:{relacoes:{in:-5},economia:{confiancaMercado:-.4}}},
+    ],
+    silencio:{titulo:'Não priorizar a proposta',efeitos:{relacoes:{in:-3}}},
+  },
+];

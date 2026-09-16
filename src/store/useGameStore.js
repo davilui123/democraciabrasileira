@@ -22,7 +22,7 @@ import { FISCAL_INICIAL, registrarMovimentoFiscal, processarFiscalMensal } from 
 import { GRUPOS_INICIAIS, aplicarImpactoGrupos, aprovacaoNacional, calcularAprovacaoEstado, impactosGruposPorTags } from '../game/opinionEngine.js';
 import { impactoPost, gerarRepercussao, gerarConviteMidia, gerarPostsComunidade, calcularTendenciasPulso } from '../game/mediaEngine.js';
 import { organizacoesInternacionaisSeed, doutrinasBrasilSeed, acoesSoberanasSeed } from '../data/seed/geopolitica.js';
-import { GEOPOLITICA_INICIAL, criarFeedInicial, processarMesGeopolitico, podeAbrirNegociacao, abrirJanela, impactoAcaoSoberana } from '../game/geopoliticsEngine.js';
+import { GEOPOLITICA_INICIAL, criarFeedInicial, processarMesGeopolitico, podeAbrirNegociacao, abrirJanela, impactoAcaoSoberana, gerarPressaoGeopolitica, resolverPressaoGeopolitica, expirarPressoesGeopoliticas, liderDoPais } from '../game/geopoliticsEngine.js';
 import { programasGovernamentaisSeed } from '../data/seed/programasGovernamentais.js';
 import { construirPrograma, programaParaLei, avaliarMesPrograma, simularDesenhoPrograma } from '../game/programEngine.js';
 import { comunidadePulsoSeed } from '../data/seed/comunidadePulso.js';
@@ -38,10 +38,15 @@ import { empresasPrivadasSeed, modalidadesParceriaSeed } from '../data/seed/empr
 import { promessasPosseSeed } from '../data/seed/perfilPresidencial.js';
 import { criarConsequenciasAgenda, criarConsequenciaFederativa } from '../game/turnConsequenceEngine.js';
 import { empresasVisitasSeed } from '../data/seed/empresasVisitas.js';
-import { COMERCIO_INICIAL, criarOportunidadeVisita, processarComercioMensal, ajustarTarifaSetorial } from '../game/tradeEngine.js';
+import { COMERCIO_INICIAL, criarOportunidadeVisita, processarComercioMensal, ajustarTarifaSetorial, aplicarPreferenciaComercial, normalizarComercio } from '../game/tradeEngine.js';
 import { criarAgendaCalendarioInicial, criarConviteVisitaInternacional, criarConviteMidiaCalendario, criarConviteGovernadorCalendario, criarConviteEmpresarialCalendario, compromissosNoTurno, dataDoTurno, isoData } from '../game/agendaEngine.js';
+import { createPoliticalOrchestratorState, processPoliticalOrchestrator } from '../game/politicalOrchestratorEngine.js';
 import { criarEstadoEleitoralInicial, faseEleitoralPorData, diasParaPrimeiroTurno, processarMesEleitoral, atualizarPesquisaEleitoral as recalcularPesquisaEleitoral, prepararVicePool, escolherVice, aplicarOfertaConvencao, finalizarConvencao, mudarFiliacaoEleitoral, executarCaptacao, executarAcaoEleitoral, apoiarCorridaEstadual, resolverDebate, alterarPosicaoEleitoral, simularPrimeiroTurno, simularSegundoTurno, getParty } from '../game/electionEngine.js';
+import { createPoliticalAIState, syncPoliticalAI, addPoliticalMemory, processPoliticalAI } from '../game/politicalActorEngine.js';
 import { cutscenePorEvento, cutscenePorId } from '../data/seed/cutscenes.js';
+import { GOVERNABILIDADE_INICIAL, aplicarVariacaoMensalCapital, custoPoliticoEfetivo } from '../game/governabilityEngine.js';
+import { gerarCascataSistemica, registrarCascata } from '../game/systemicCascadeEngine.js';
+import { processInstitutionalAutonomy, aplicarEfeitosInstitucionais } from '../game/institutionalAutonomyEngine.js';
 
 // =================================================================================
 // 1. CONSTANTES GLOBAIS
@@ -89,6 +94,94 @@ const aplicarImpactos = (state, impacto = {}, fator = 1) => {
     else if (/^(gastos|custos)/i.test(chave) && valor > 0) economia = registrarMovimentoFiscal(economia, valor, 'custeio');
   });
   return { popularidade, economia, institucional, mundo, partidos, capitalPolitico, climaGoverno, orcamento, oposicao };
+};
+
+
+const aplicarEfeitosPressaoGeopolitica = (state, efeitos = {}, geopoliticaBase = state.geopolitica) => {
+  let paises=(state.paises||[]).map(p=>({...p}));
+  Object.entries(efeitos.relacoes||{}).forEach(([paisId,delta])=>{
+    paises=paises.map(p=>p.id===paisId?{...p,relacao:clamp((p.relacao??50)+Number(delta||0))}:p);
+  });
+
+  let economia={...state.economia};
+  Object.entries(efeitos.economia||{}).forEach(([key,delta])=>{
+    const atual=Number(economia[key]??0); const valor=atual+Number(delta||0);
+    if(key==='confiancaMercado') economia[key]=clamp(valor);
+    else if(key==='riscoPais') economia[key]=Math.max(60,valor);
+    else if(key==='inflacao' || key==='desemprego') economia[key]=Math.max(.1,valor);
+    else economia[key]=Number(valor.toFixed?.(2)??valor);
+  });
+
+  let mundo={...state.mundo};
+  Object.entries(efeitos.mundo||{}).forEach(([key,delta])=>{
+    const atual=Number(mundo[key]??0); const valor=atual+Number(delta||0);
+    mundo[key]=['softPowerBrasil','liderancaAmbiental','tensaoGlobal'].includes(key)?clamp(valor):valor;
+  });
+
+  let geopolitica={...geopoliticaBase,organizacoes:{...(geopoliticaBase?.organizacoes||{})}};
+  Object.entries(efeitos.geopolitica||{}).forEach(([key,delta])=>{
+    geopolitica[key]=clamp(Number(geopolitica[key]??50)+Number(delta||0));
+  });
+  Object.entries(efeitos.organizacoes||{}).forEach(([orgId,delta])=>{
+    geopolitica.organizacoes[orgId]=clamp(Number(geopolitica.organizacoes?.[orgId]??50)+Number(delta||0));
+  });
+
+  const gruposSociais=aplicarImpactoGrupos(state.gruposSociais,efeitos.grupos||{});
+  const popularidade={...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))};
+  return {paises,economia,mundo,geopolitica,gruposSociais,popularidade};
+};
+
+
+const aplicarComercioDaPressao = (state, pressao, opcaoId='silencio') => {
+  const comercio=normalizarComercio(state.comercioExterior||COMERCIO_INICIAL);
+  const baseId=pressao?.baseId||pressao?.id||'';
+  const parceiro=(id)=>comercio.parceiros?.[id];
+  const preferencia=(id,delta)=>{
+    const p=parceiro(id); if(p)p.preferencia=clamp((p.preferencia||0)+delta,-30,30);
+    comercio.concorrenciaGeopolitica={...(comercio.concorrenciaGeopolitica||{}),preferencias:{...(comercio.concorrenciaGeopolitica?.preferencias||{}),[id]:clamp(Number(comercio.concorrenciaGeopolitica?.preferencias?.[id]||0)+delta,-30,30)}};
+  };
+  const acesso=(id,delta)=>{const p=parceiro(id);if(p)p.acesso=clamp((p.acesso||50)+delta);};
+  const tensao=(id,delta)=>{
+    const lista=[...(comercio.concorrenciaGeopolitica?.tensoes||[])];
+    const idx=lista.findIndex(t=>t.paisId===id&&t.status!=='encerrada');
+    if(idx>=0)lista[idx]={...lista[idx],intensidade:clamp(Number(lista[idx].intensidade||0)+delta,0,100),status:Number(lista[idx].intensidade||0)+delta>5?'ativa':'encerrada'};
+    else if(delta>0)lista.unshift({id:`pressure_tens_${id}_${state.turno}`,paisId:id,origemId:`pressao:${baseId}`,titulo:'Atrito comercial e geopolítico',intensidade:clamp(delta,0,100),criadaNoTurno:state.turno,status:'ativa'});
+    comercio.concorrenciaGeopolitica={...(comercio.concorrenciaGeopolitica||{}),tensoes:lista.filter(t=>t.status!=='encerrada'&&(t.intensidade||0)>5).slice(0,20)};
+  };
+  const item=(id,{valorPct=0,potencial=0,dependencia=0,capacidadeDomestica=0}={})=>{
+    const atual=comercio.itensEstrategicos?.[id];
+    if(atual)comercio.itensEstrategicos={...comercio.itensEstrategicos,[id]:{...atual,valor:Math.max(0,Math.round(Number(atual.valor||0)*(1+valorPct))),potencial:clamp(Number(atual.potencial||0)+potencial),dependencia:clamp(Number(atual.dependencia||0)+dependencia),capacidadeDomestica:clamp(Number(atual.capacidadeDomestica||0)+capacidadeDomestica)}};
+  };
+  const setor=(fluxo,id,pct)=>{const base=fluxo==='exp'?comercio.exportacoesPorSetor:comercio.importacoesPorSetor; if(base?.[id])base[id]={...base[id],valor:Math.max(0,Math.round(Number(base[id].valor||0)*(1+pct)))};};
+
+  if(baseId==='cn_terras_raras'){
+    if(opcaoId==='preferencia'){preferencia('cn',10);tensao('us',8);tensao('jp',3);item('terras_raras',{potencial:10,capacidadeDomestica:4});item('litio',{potencial:7});item('niobio',{potencial:5});}
+    else if(opcaoId==='consorcio'){preferencia('cn',4);preferencia('us',1);preferencia('jp',1);item('terras_raras',{potencial:6,capacidadeDomestica:3});item('litio',{potencial:4});}
+    else if(opcaoId==='rejeitar'){preferencia('cn',-6);tensao('cn',5);item('terras_raras',{potencial:-3});}
+    else {preferencia('cn',-3);tensao('cn',3);}
+  }
+  if(baseId==='us_tarifaco'){
+    if(opcaoId==='negociar'){acesso('us',6);preferencia('us',3);tensao('us',-5);item('aco',{valorPct:-.01,potencial:2});}
+    else if(opcaoId==='omc'){acesso('us',-3);tensao('us',6);item('aco',{valorPct:-.04,potencial:-2});setor('exp','industria',-.02);}
+    else if(opcaoId==='retaliar'){acesso('us',-12);preferencia('us',-6);tensao('us',14);item('aco',{valorPct:-.1,potencial:-5});item('carne_bovina',{valorPct:-.04});setor('exp','industria',-.07);setor('exp','agro',-.05);}
+    else {acesso('us',-9);tensao('us',9);item('aco',{valorPct:-.08,potencial:-4});setor('exp','industria',-.05);setor('exp','agro',-.03);}
+  }
+  if(baseId==='ru_apoio_guerra'){
+    if(opcaoId==='rejeitar'){acesso('ru',-8);tensao('ru',7);item('fertilizantes',{valorPct:.13,dependencia:4,potencial:-2});setor('imp','fertilizantes',.1);}
+    else if(opcaoId==='apoiar'){preferencia('ru',6);item('fertilizantes',{valorPct:-.04,dependencia:-2});tensao('us',4);tensao('de',3);}
+    else if(opcaoId==='mediar'){item('fertilizantes',{valorPct:.01});}
+    else {item('fertilizantes',{valorPct:.06,dependencia:2});tensao('ru',4);}
+  }
+  if(baseId==='de_amazonia'){
+    if(opcaoId==='aceitar'){acesso('de',6);preferencia('de',4);item('soja',{potencial:4});item('carne_bovina',{potencial:4});item('minerio_ferro',{potencial:2});}
+    else if(opcaoId==='brasileiro'){acesso('de',3);preferencia('de',2);item('soja',{potencial:2});item('carne_bovina',{potencial:2});}
+    else if(opcaoId==='rejeitar'){acesso('de',-8);tensao('de',6);item('soja',{valorPct:-.03,potencial:-4});item('carne_bovina',{valorPct:-.03,potencial:-4});}
+  }
+  comercio.exportacoesMensais=Object.values(comercio.exportacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+  comercio.importacoesMensais=Object.values(comercio.importacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+  comercio.balanca=comercio.exportacoesMensais-comercio.importacoesMensais;
+  comercio.concorrenciaGeopolitica={...(comercio.concorrenciaGeopolitica||{}),ultimaMudanca:{turno:state.turno,origem:`pressao:${baseId}`,resposta:opcaoId}};
+  return comercio;
 };
 
 const mergeActorCatalog = (catalog=[], saved=[]) => catalog.map(base => {
@@ -148,6 +241,16 @@ const useGameStore = create((set, get) => ({
   // === CUTSCENES (FASE 4.8.2) ===
   cutscenesPendentes: [],
   cutscenesVistas: [],
+
+  // === IA POLÍTICA GLOBAL (FASE 4.9) ===
+  politicalAI: createPoliticalAIState(),
+
+  // === GOVERNABILIDADE & EFEITO DOMINÓ (FASE 4.9.3) ===
+  governabilidade: { ...GOVERNABILIDADE_INICIAL },
+  historicoCascatas: [],
+
+  // === ORQUESTRADOR POLÍTICO (FASE 4.9.4) ===
+  politicalOrchestrator: createPoliticalOrchestratorState(),
 
   // === RECURSOS DO JOGADOR ===
   orcamento: 15000,
@@ -521,8 +624,8 @@ const useGameStore = create((set, get) => ({
 
   salvarJogo: () => saveGame(get()),
 
-  carregarJogo: () => {
-    const save = loadGame();
+  carregarJogo: (campaignId = null) => {
+    const save = loadGame(campaignId);
     if (!save?.gameState) return false;
     const current = get();
     const saved = save.gameState;
@@ -544,12 +647,14 @@ const useGameStore = create((set, get) => ({
     const conquistasDesbloqueadas=(saved.conquistasDesbloqueadas||[]).filter(c=>idsConquistasAtuais.has(typeof c==='string'?c:c.id));
     const leisDisponiveis=(saved.votacoes||[]).some(v=>v.leiId===leiCriacaoEBTN.id)&&!current.leisDisponiveis.some(l=>l.id===leiCriacaoEBTN.id)?[...current.leisDisponiveis,leiCriacaoEBTN]:current.leisDisponiveis;
     const redeSocial={...current.redeSocial,...(saved.redeSocial||{}),posts:saved.redeSocial?.posts||current.redeSocial.posts,tendencias:saved.redeSocial?.tendencias||current.redeSocial.tendencias,notificacoes:saved.redeSocial?.notificacoes||[],interacoesPresidenciais:saved.redeSocial?.interacoesPresidenciais||[]};
-    set({ ...saved, cutscenesPendentes:saved.cutscenesPendentes||[], cutscenesVistas:saved.cutscenesVistas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL, agendaCalendario:saved.agendaCalendario||current.agendaCalendario||criarAgendaCalendarioInicial(DATA_INICIO), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, oposicao, instituicoes: instituicoesSeed, candidatosSTF: candidatosSTFSeed, comunidadePulso: comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], eventosEstatais: saved.eventosEstatais || [], historicoEventosFederativos: saved.historicoEventosFederativos || [], eventoFederativoAtivo: saved.eventoFederativoAtivo || null, historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    const midias=midiasSeed.map(base=>({...base,...((saved.midias||[]).find(m=>m.id===base.id)||{}),logo:base.logo,logosCanais:base.logosCanais}));
+    const politicalAI=syncPoliticalAI(saved.politicalAI||createPoliticalAIState(),{...current,...saved,estados,nomeacoes,atoresCongresso});
+    set({ ...saved, politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], cutscenesPendentes:saved.cutscenesPendentes||[], cutscenesVistas:saved.cutscenesVistas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), agendaCalendario:saved.agendaCalendario||current.agendaCalendario||criarAgendaCalendarioInicial(DATA_INICIO), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, oposicao, instituicoes: instituicoesSeed, candidatosSTF: candidatosSTFSeed, comunidadePulso: comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], eventosEstatais: saved.eventosEstatais || [], historicoEventosFederativos: saved.historicoEventosFederativos || [], eventoFederativoAtivo: saved.eventoFederativoAtivo || null, historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
     return true;
   },
 
-  limparSave: () => {
-    clearSave();
+  limparSave: (campaignId = null) => {
+    clearSave(campaignId);
     return true;
   },
 
@@ -572,7 +677,7 @@ const useGameStore = create((set, get) => ({
     const posse={id:`posse_${Date.now()}`,autorId:'presidente',autor:nomePublico,handle,texto:`Assumo a Presidência com três compromissos centrais: ${promessas.map(p=>p.titulo).join(', ')}. O governo será cobrado por entrega, não por slogan.`,tema:'governo',alcance:6200000,turno:1};
     const oposicaoPost={id:`op_posse_${Date.now()}`,autorId:state.oposicao?.lider?.id||'oposicao',autor:state.oposicao?.lider?.nome||'Caio Valente',handle:'@CaioValente',grupo:'oposicao',texto:`Parabéns a ${nomePublico}. Nós estaremos aqui para lembrar cada promessa de campanha — especialmente ${promessas[0]?.titulo||'as que o novo governo preferir esquecer'}.`,tema:'oposicao',sentimento:-1,alcance:3100000,turno:1};
     const comunidade=gerarPostsComunidade({gruposSociais,turno:1,evento:'Posse',quantidade:4,respostaA:posse.id});
-    set({perfilPresidencial:perfilFinal,eleicao:eleicaoInicial,promessasPoliticas:promessas,gruposSociais,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},partidos,redeSocial:{...state.redeSocial,posts:[posse,oposicaoPost,...comunidade,...(state.redeSocial.posts||[])].slice(0,100),tendencias:['#Posse','#NovoGoverno',...promessas.map(p=>`#${p.id}`)],notificacoes:[{id:`not_posse_${Date.now()}`,texto:`${eleicaoInicial.viceAtual.nome} assume a Vice-Presidência. Seu perfil presidencial foi criado e a oposição já começou a cobrar promessas.`,tipo:'politica'}]}});
+    set({perfilPresidencial:perfilFinal,eleicao:eleicaoInicial,politicalAI:createPoliticalAIState(),politicalOrchestrator:createPoliticalOrchestratorState(),governabilidade:{...GOVERNABILIDADE_INICIAL},historicoCascatas:[],promessasPoliticas:promessas,gruposSociais,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},partidos,redeSocial:{...state.redeSocial,posts:[posse,oposicaoPost,...comunidade,...(state.redeSocial.posts||[])].slice(0,100),tendencias:['#Posse','#NovoGoverno',...promessas.map(p=>`#${p.id}`)],notificacoes:[{id:`not_posse_${Date.now()}`,texto:`${eleicaoInicial.viceAtual.nome} assume a Vice-Presidência. Seu perfil presidencial foi criado e a oposição já começou a cobrar promessas.`,tipo:'politica'}]}});
     saveGame(get()); return {ok:true,perfil:perfilFinal};
   },
 
@@ -595,11 +700,13 @@ const useGameStore = create((set, get) => ({
     const conquistasDesbloqueadas=(saved.conquistasDesbloqueadas||[]).filter(c=>idsConquistasAtuais.has(typeof c==='string'?c:c.id));
     const leisDisponiveis=(saved.votacoes||[]).some(v=>v.leiId===leiCriacaoEBTN.id)&&!current.leisDisponiveis.some(l=>l.id===leiCriacaoEBTN.id)?[...current.leisDisponiveis,leiCriacaoEBTN]:current.leisDisponiveis;
     const redeSocial={...current.redeSocial,...(saved.redeSocial||{}),posts:saved.redeSocial?.posts||current.redeSocial.posts,tendencias:saved.redeSocial?.tendencias||current.redeSocial.tendencias,notificacoes:saved.redeSocial?.notificacoes||[],interacoesPresidenciais:saved.redeSocial?.interacoesPresidenciais||[]};
+    const midias=midiasSeed.map(base=>({...base,...((saved.midias||[]).find(m=>m.id===base.id)||{}),logo:base.logo,logosCanais:base.logosCanais}));
     const stf = { ...current.stf, ...(saved.stf || {}), corte: mergeCourtCatalog(current.stf.corte||[], saved.stf?.corte||[]) };
     const atoresCongresso = mergeActorCatalog(current.atoresCongresso||[], saved.atoresCongresso||[]);
     const estados = mergeStateCatalog(current.estados||[], saved.estados||[]);
+    const politicalAI=syncPoliticalAI(saved.politicalAI||createPoliticalAIState(),{...current,...saved,estados,nomeacoes,atoresCongresso});
     const eleicao = saved.eleicao || criarEstadoEleitoralInicial({perfil:saved.perfilPresidencial||current.perfilPresidencial,estados});
-    set({ ...saved, economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL, conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, instituicoes:instituicoesSeed, candidatosSTF:candidatosSTFSeed, comunidadePulso:comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    set({ ...saved, politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, instituicoes:instituicoesSeed, candidatosSTF:candidatosSTFSeed, comunidadePulso:comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
     saveGame(get());
     return true;
   },
@@ -1633,44 +1740,88 @@ const useGameStore = create((set, get) => ({
 
   processarTurnoInternacional: () => {
     set(state => {
+      const turnoAlvo=state.turno+1;
       const variacaoTensao = Math.floor(Math.random() * 7) - 2;
-      const novaTensao = clamp(state.mundo.tensaoGlobal + variacaoTensao);
+      let mundo={ ...state.mundo, tensaoGlobal:clamp(state.mundo.tensaoGlobal+variacaoTensao) };
       const novasCommodities = Object.fromEntries(Object.entries(state.mundo.commodities || {}).map(([key, value]) => {
         const variacao = (Math.random() * 2 - 1) * (value.volatilidade || 1);
         return [key, { ...value, preco: Math.max(1, value.preco + variacao) }];
       }));
-      let geopolitica = processarMesGeopolitico({ geopolitica: state.geopolitica, paises: state.paises, turno: state.turno + 1, tensaoGlobal: novaTensao });
+      mundo={...mundo,commodities:novasCommodities};
+      let paises=(state.paises||[]).map(p=>({...p}));
+      let economia={...state.economia};
+      let comercioExterior=normalizarComercio(state.comercioExterior||COMERCIO_INICIAL);
+      let gruposSociais=state.gruposSociais;
+      let popularidade=state.popularidade;
+      let geopolitica=processarMesGeopolitico({geopolitica:state.geopolitica,paises,turno:turnoAlvo,tensaoGlobal:mundo.tensaoGlobal});
+      const eventosExtras=[];
+      let notificacoes=[...(state.redeSocial?.notificacoes||[])];
+
+      // Pressões sem resposta não desaparecem silenciosamente: o custo diplomático amadurece no mês seguinte.
+      const expiracao=expirarPressoesGeopoliticas(geopolitica,turnoAlvo);
+      geopolitica=expiracao.geopolitica;
+      expiracao.expiradas.forEach(({pressao,opcao})=>{
+        const aplicado=aplicarEfeitosPressaoGeopolitica({...state,paises,economia,mundo,gruposSociais,popularidade},opcao.efeitos||{},geopolitica);
+        ({paises,economia,mundo,geopolitica,gruposSociais,popularidade}=aplicado);
+        comercioExterior=aplicarComercioDaPressao({...state,comercioExterior,turno:turnoAlvo},pressao,'silencio');
+        const pais=paises.find(p=>p.id===pressao.paisId);
+        eventosExtras.push(`⌛ ${pais?.nome||'Parceiro estrangeiro'}: a ausência de resposta do Planalto teve custo diplomático.`);
+      });
+
+      // O mundo também joga: chefes estrangeiros criam demandas conforme seus próprios interesses.
+      const gerada=gerarPressaoGeopolitica({geopolitica,paises,mundo,economia,turno:turnoAlvo});
+      geopolitica=gerada.geopolitica;
+      if(gerada.pressao){
+        const pais=paises.find(p=>p.id===gerada.pressao.paisId);
+        const lider=liderDoPais(pais);
+        notificacoes=[{
+          id:`geo_pressure_${gerada.pressao.id}`,tipo:'diplomacia',turno:turnoAlvo,rota:'mapa',pressaoId:gerada.pressao.id,
+          texto:`${lider.nome}: ${gerada.pressao.titulo}. A Presidência precisa definir uma resposta.`,
+        },...notificacoes].slice(0,40);
+      }
+
       const sancoesPersistentes=Math.min(3,(geopolitica.sancoesAtivas||[]).length);
       if(sancoesPersistentes && Math.random()<0.22*sancoesPersistentes){
-        const alvo=state.paises.find(p=>p.id===geopolitica.sancoesAtivas[0]?.paisId);
-        geopolitica={...geopolitica,feed:[{id:`san_reperc_${state.turno+1}_${Date.now()}`,titulo:`Sanções contra ${alvo?.nome||'país estrangeiro'} geram retaliação comercial e alerta humanitário`,tema:'sancoes',paises:alvo?[alvo.id]:[],gravidade:62,fonte:'Mundi Exterior',turno:state.turno+1,idade:0},...(geopolitica.feed||[])].slice(0,90)};
+        const alvo=paises.find(p=>p.id===geopolitica.sancoesAtivas[0]?.paisId);
+        geopolitica={...geopolitica,feed:[{id:`san_reperc_${turnoAlvo}_${Date.now()}`,titulo:`Sanções contra ${alvo?.nome||'país estrangeiro'} geram retaliação comercial e alerta humanitário`,tema:'sancoes',paises:alvo?[alvo.id]:[],gravidade:62,fonte:'Mundi Exterior',turno:turnoAlvo,idade:0},...(geopolitica.feed||[])].slice(0,90)};
+        economia={...economia,inflacao:Math.max(.5,economia.inflacao+.03*sancoesPersistentes),riscoPais:Math.max(80,economia.riscoPais+2*sancoesPersistentes)};
       }
-      const evento = geopolitica.feed?.[0];
-      const fonteParaMidia = {
-        'Global Internacional':'global',
-        'N1 Mundo':'n1',
-        'Mundi Exterior':'mundi',
-        'Canal Geral Mundo':'canal_geral',
-      };
-      const autorId = fonteParaMidia[evento?.fonte] || ['global','n1','mundi','canal_geral'][Math.floor(Math.random()*4)];
-      const midia = (state.midias||[]).find(m=>m.id===autorId);
-      const postInternacional = evento ? {
-        id:`int_${state.turno+1}_${Date.now()}`,
-        autorId,
-        texto:evento.titulo,
-        tema:'internacional',
-        sentimento:evento.gravidade>=70?-2:evento.gravidade>=50?-1:0,
-        alcance:Math.round((midia?.alcance||70)*100000),
-        turno:state.turno+1,
-      } : null;
+
+      const evento=geopolitica.feed?.[0];
+      const fonteParaMidia={'Global Internacional':'global','N1 Mundo':'n1','Mundi Exterior':'mundi','Canal Geral Mundo':'canal_geral'};
+      const autorId=fonteParaMidia[evento?.fonte]||['global','n1','mundi','canal_geral'][Math.floor(Math.random()*4)];
+      const midia=(state.midias||[]).find(m=>m.id===autorId);
+      const postInternacional=evento?{
+        id:`int_${turnoAlvo}_${Date.now()}`,autorId,texto:evento.titulo,tema:'internacional',
+        sentimento:evento.gravidade>=70?-2:evento.gravidade>=50?-1:0,alcance:Math.round((midia?.alcance||70)*100000),turno:turnoAlvo,
+      }:null;
+      const posts=postInternacional?[postInternacional,...(state.redeSocial?.posts||[])].slice(0,100):(state.redeSocial?.posts||[]);
       return {
-        mundo: { ...state.mundo, tensaoGlobal: novaTensao, commodities: novasCommodities },
-        economia: sancoesPersistentes ? { ...state.economia, inflacao:Math.max(.5,state.economia.inflacao+.03*sancoesPersistentes), riscoPais:Math.max(80,state.economia.riscoPais+2*sancoesPersistentes) } : state.economia,
-        geopolitica,
-        redeSocial: postInternacional ? { ...state.redeSocial, posts:[postInternacional,...(state.redeSocial?.posts||[])].slice(0,100) } : state.redeSocial,
-        eventosRecentes: evento ? [`🌍 ${evento.titulo}`, ...state.eventosRecentes].slice(0,18) : state.eventosRecentes,
+        mundo,economia,paises,gruposSociais,popularidade,geopolitica,comercioExterior,
+        redeSocial:{...state.redeSocial,posts,notificacoes},
+        eventosRecentes:[...(evento?[`🌍 ${evento.titulo}`]:[]),...eventosExtras,...state.eventosRecentes].slice(0,18),
       };
     });
+  },
+
+  responderPressaoDiplomatica: (pressaoId,opcaoId) => {
+    const state=get();
+    const resultado=resolverPressaoGeopolitica(state.geopolitica,pressaoId,opcaoId,state.turno);
+    if(!resultado.ok) return resultado;
+    const aplicado=aplicarEfeitosPressaoGeopolitica(state,resultado.opcao.efeitos||{},resultado.geopolitica);
+    const comercioExterior=aplicarComercioDaPressao(state,resultado.pressao,resultado.opcao.id);
+    const pais=aplicado.paises.find(p=>p.id===resultado.pressao.paisId);
+    const lider=liderDoPais(pais);
+    const headline=`${pais?.nome||'Política externa'}: Planalto escolhe “${resultado.opcao.titulo}” diante de pressão diplomática`;
+    const feedItem={id:`geo_response_${pressaoId}_${Date.now()}`,titulo:headline,tema:'diplomacia',paises:pais?[pais.id]:[],gravidade:46,fonte:'Global Internacional',turno:state.turno,idade:0};
+    const geopolitica={...aplicado.geopolitica,feed:[feedItem,...(aplicado.geopolitica.feed||[])].slice(0,90)};
+    set(current=>({
+      ...aplicado,geopolitica,comercioExterior,
+      redeSocial:{...current.redeSocial,notificacoes:(current.redeSocial?.notificacoes||[]).filter(n=>n.pressaoId!==pressaoId)},
+      eventosRecentes:[`🌐 ${lider.nome}: ${resultado.opcao.titulo}.`,...current.eventosRecentes].slice(0,18),
+    }));
+    saveGame(get());
+    return {ok:true,pressao:resultado.pressao,opcao:resultado.opcao};
   },
 
   podeNegociarCom: (paisId) => podeAbrirNegociacao(get().geopolitica, paisId, get().turno),
@@ -2109,16 +2260,24 @@ const useGameStore = create((set, get) => ({
       let economia=registrarMovimentoFiscal(current.economia,Math.round((modalidade.impactoFiscal||0)*sinergia),'infraestrutura');
       economia.crescimentoPib=Number(((economia.crescimentoPib||0)+(modalidade.crescimento||0)*sinergia).toFixed(3));
       economia.confiancaMercado=clamp((economia.confiancaMercado||50)+1.2+(empresa.reputacao||50)/120);
-      let geopolitica={...current.geopolitica}; let paises=current.paises.map(p=>({...p}));
+      let geopolitica={...current.geopolitica}; let paises=current.paises.map(p=>({...p})); let comercioExterior=normalizarComercio(current.comercioExterior||COMERCIO_INICIAL);
+      const rivalidadesComerciais={cn:{us:-2,de:-1,jp:-1},us:{cn:-2},de:{cn:-1},jp:{cn:-1},fr:{cn:-.5}};
+      let mensagemRivalidade='';
       if(empresa.tipo==='multinacional'&&empresa.paisId&&empresa.paisId!=='br'){
         geopolitica=abrirJanela(geopolitica,empresa.paisId,current.turno,2);
-        paises=paises.map(p=>p.id===empresa.paisId?{...p,relacao:clamp((p.relacao||50)+2)}:p);
+        const rivais=rivalidadesComerciais[empresa.paisId]||{};
+        paises=paises.map(p=>{let delta=p.id===empresa.paisId?2:0;if(rivais[p.id])delta+=rivais[p.id];return delta?{...p,relacao:clamp((p.relacao||50)+delta)}:p;});
+        const prefs={...(comercioExterior.concorrenciaGeopolitica?.preferencias||{})}; prefs[empresa.paisId]=clamp((prefs[empresa.paisId]||0)+3,-30,30);
+        Object.entries(rivais).forEach(([id,v])=>{prefs[id]=clamp((prefs[id]||0)+v,-30,30);});
+        const tensoes=[...Object.entries(rivais).filter(([,v])=>v<0).map(([paisId,v])=>({id:`emp_tens_${empresa.id}_${paisId}_${current.turno}`,paisId,origemId:empresa.id,titulo:`Parceria com ${empresa.nome} altera equilíbrio competitivo`,intensidade:Math.abs(v)*16+18,criadaNoTurno:current.turno,status:'ativa'})),...(comercioExterior.concorrenciaGeopolitica?.tensoes||[])].slice(0,20);
+        comercioExterior.concorrenciaGeopolitica={...comercioExterior.concorrenciaGeopolitica,preferencias:prefs,tensoes,ultimaMudanca:{empresaId:empresa.id,paisId:empresa.paisId,turno:current.turno}};
+        const nomes=Object.keys(rivais).map(id=>current.paises.find(p=>p.id===id)?.nome).filter(Boolean); if(nomes.length)mensagemRivalidade=` A aproximação é observada com reservas por ${nomes.join(' e ')}.`;
       }
       const gruposBase=empresa.eixo==='agro'?{agro:2,mercado:1,sindicalistas:-.5}:empresa.eixo==='tecnologia'?{universitarios:2,mercado:2,sindicalistas:.4}:empresa.eixo==='infraestrutura'?{mercado:2,periferia:1,agro:1}:empresa.eixo==='saude'?{universitarios:1,periferia:1,mercado:1}:{mercado:1.5,sindicalistas:.5};
       const gruposSociais=aplicarImpactoGrupos(current.gruposSociais,gruposBase);
       const post={id:`emp_${nova.id}`,autorId:empresa.id,autor:empresa.nome,handle:`@${empresa.sigla.toLowerCase()}`,grupo:'empresas',texto:`${empresa.nome} anuncia ${modalidade.nome.toLowerCase()} com o governo brasileiro${projetoAtivo?` vinculada ao projeto ${projetoAtivo.titulo}`:''}.`,tema:empresa.eixo,alcance:900000+empresa.influencia*18000,turno:current.turno};
       const posts=[post,...(current.redeSocial.posts||[])].slice(0,120);
-      return {economia,geopolitica,paises,gruposSociais,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},capitalPolitico:clamp(current.capitalPolitico-(modalidade.capital||1)),parceriasEmpresariais:[nova,...(current.parceriasEmpresariais||[])].slice(0,40),ultimaParceriaTurno:current.turno,redeSocial:{...current.redeSocial,posts,tendencias:calcularTendenciasPulso(posts)},eventosRecentes:[`🏢 Parceria: ${empresa.nome} · ${modalidade.nome}.`,...current.eventosRecentes].slice(0,18)};
+      return {economia,geopolitica,paises,comercioExterior,gruposSociais,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},capitalPolitico:clamp(current.capitalPolitico-(modalidade.capital||1)),parceriasEmpresariais:[nova,...(current.parceriasEmpresariais||[])].slice(0,40),ultimaParceriaTurno:current.turno,redeSocial:{...current.redeSocial,posts,tendencias:calcularTendenciasPulso(posts)},eventosRecentes:[`🏢 Parceria: ${empresa.nome} · ${modalidade.nome}.${mensagemRivalidade}`,...current.eventosRecentes].slice(0,18)};
     }); saveGame(get()); return {ok:true,parceria:nova};
   },
 
@@ -2167,14 +2326,39 @@ const useGameStore = create((set, get) => ({
       const comunidade=gerarPostsComunidade({gruposSociais,turno:current.turno,evento:ev.tema,quantidade:4,respostaA:govPost.id});
       const consequencia=criarConsequenciaFederativa(ev,op,current.turno);
       const posts=[govPost,...comunidade,...(current.redeSocial.posts||[])].slice(0,120);
-      return {gruposSociais,economia,stf,estados,oposicao,institucional,congresso,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},redeSocial:{...current.redeSocial,posts,tendencias:calcularTendenciasPulso(posts)},consequenciasPendentes:consequencia?[...(current.consequenciasPendentes||[]),consequencia]:(current.consequenciasPendentes||[]),eventoFederativoAtivo:null,historicoEventosFederativos:[{...ev,status:'respondida',resposta:op.texto,resolvidoNoTurno:current.turno,consequenciaId:consequencia?.id},...(current.historicoEventosFederativos||[])].slice(0,30),eventosRecentes:[`🇧🇷 ${ev.estado}: Planalto responde “${op.texto}” (impacto ×${fator.toFixed(2)}). Desdobramentos seguirão nos próximos meses.`,...current.eventosRecentes].slice(0,18)};
+      const aiBase=syncPoliticalAI(current.politicalAI||createPoliticalAIState(),{...current,estados});
+      const politicalAI=addPoliticalMemory(aiBase,`gov:${ev.uf}`,{turn:current.turno,type:'crise_federativa',valence:Math.max(-3,Math.min(3,Math.round((op.relacao||0)/3))),title:ev.titulo,text:`Na crise “${ev.titulo}”, o Planalto respondeu: ${op.texto}.`});
+      return {gruposSociais,economia,stf,estados,oposicao,institucional,congresso,politicalAI,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},redeSocial:{...current.redeSocial,posts,tendencias:calcularTendenciasPulso(posts)},consequenciasPendentes:consequencia?[...(current.consequenciasPendentes||[]),consequencia]:(current.consequenciasPendentes||[]),eventoFederativoAtivo:null,historicoEventosFederativos:[{...ev,status:'respondida',resposta:op.texto,resolvidoNoTurno:current.turno,consequenciaId:consequencia?.id},...(current.historicoEventosFederativos||[])].slice(0,30),eventosRecentes:[`🇧🇷 ${ev.estado}: Planalto responde “${op.texto}” (impacto ×${fator.toFixed(2)}). Desdobramentos seguirão nos próximos meses.`,...current.eventosRecentes].slice(0,18)};
     }); saveGame(get());return {ok:true};
   },
 
   processarEventosFederativos: () => {
     const state=get();
     const primeiro=!(state.historicoEventosFederativos||[]).length;
-    if(state.eventoFederativoAtivo||(!primeiro&&state.turno%2===0))return;
+    // Silêncio também é uma decisão: crise federativa ignorada amadurece e cobra preço.
+    if(state.eventoFederativoAtivo){
+      const ev=state.eventoFederativoAtivo;
+      const turnoAlvo=state.turno+1;
+      const idade=Math.max(0,turnoAlvo-(ev.criadoNoTurno||turnoAlvo));
+      if(idade>=1 && (ev.ultimaEscaladaTurno||0)<turnoAlvo){
+        set(current=>{
+          const forte=idade>=3;
+          const estados=current.estados.map(e=>e.uf!==ev.uf?e:{...e,relacaoPlanalto:clamp((e.relacaoPlanalto||50)-(forte?3:1.5)),governador:{...e.governador,relacao:clamp((e.governador?.relacao||50)-(forte?3:1.5))}});
+          const texto=forte?`${ev.governador?.nome||'O governo estadual'} nacionaliza a cobrança após meses sem resposta do Planalto.`:`${ev.governador?.nome||'O governo estadual'} cobra publicamente uma resposta do Planalto para ${ev.titulo}.`;
+          return {
+            eventoFederativoAtivo:{...ev,ultimaEscaladaTurno:turnoAlvo,nivelEscalada:forte?'nacional':'publica'},
+            estados,
+            capitalPolitico:clamp((current.capitalPolitico||0)-(forte?2:1)),
+            congresso:{...current.congresso,poder:clamp((current.congresso?.poder||50)-(forte?2:0.5))},
+            oposicao:{...current.oposicao,forca:clamp((current.oposicao?.forca||30)+(forte?2:0.5))},
+            eventosRecentes:[`⏳ Crise federativa sem resposta: ${texto}`,...current.eventosRecentes].slice(0,18),
+            redeSocial:{...current.redeSocial,notificacoes:[{id:`fed_silencio_${ev.instanceId}_${turnoAlvo}`,tipo:'federacao',turno:turnoAlvo,rota:'federacao',texto},...(current.redeSocial?.notificacoes||[])].slice(0,40)},
+          };
+        });
+      }
+      return;
+    }
+    if(!primeiro&&state.turno%2===0)return;
     const ev=sortearEventoFederativo({turno:state.turno,estados:state.estados,historico:state.historicoEventosFederativos,nomeacoes:state.nomeacoes,cargos:state.cargos});
     if(!ev)return;
     const scene=cutscenePorEvento(ev.baseId||ev.id);
@@ -2219,6 +2403,8 @@ const useGameStore = create((set, get) => ({
     const politica={...POLITICA_ECONOMICA_INICIAL,...state.politicaEconomica,tributosAlteradosTurno:[...(state.politicaEconomica?.tributosAlteradosTurno||[])]};
     if(politica.tributosAlteradosTurno.includes(tributoId)) return {ok:false,motivo:'Este instrumento já foi alterado neste mês.'};
     if(politica.tributosAlteradosTurno.length>=2) return {ok:false,motivo:'A equipe econômica recomenda no máximo duas alterações tributárias executivas por mês.'};
+    const custoPolitico=custoPoliticoEfetivo(1,state,'baixo');
+    if(state.capitalPolitico<custoPolitico) return {ok:false,motivo:`Capital político insuficiente: esta alteração exige ${custoPolitico} CP.`};
     const r=aplicarMudancaTributaria(politica,tributoId,meta.step*(direcao>=0?1:-1));
     if(!r.ok)return r;
     const pressao=calcularPressaoTributaria(r.politica.tributos);
@@ -2232,13 +2418,13 @@ const useGameStore = create((set, get) => ({
       const comunidade=gerarPostsComunidade({gruposSociais,turno:current.turno,evento:meta.sigla,quantidade:3,respostaA:media.id});
       return {
         politicaEconomica:{...r.politica,tributosAlteradosTurno:[...r.politica.tributosAlteradosTurno,tributoId],historico:[{tipo:'tributo',id:tributoId,de:r.atual,para:r.novo,turno:current.turno},...(r.politica.historico||[])].slice(0,40)},
-        economia,gruposSociais,estados,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},
+        economia,gruposSociais,estados,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},capitalPolitico:clamp(current.capitalPolitico-custoPolitico),
         redeSocial:{...current.redeSocial,posts:[media,...comunidade,...(current.redeSocial.posts||[])].slice(0,100)},
         eventosRecentes:[`🧾 ${evento}`,...current.eventosRecentes].slice(0,18)
       };
     });
     saveGame(get());
-    return {ok:true,meta,novo:r.novo,pressao};
+    return {ok:true,meta,novo:r.novo,pressao,custoPolitico};
   },
 
   enviarReformaTributaria: (leiId) => {
@@ -2254,12 +2440,15 @@ const useGameStore = create((set, get) => ({
     const ultima=(state.politicaEconomica?.medidasUsadas||[]).find(m=>m.id===medidaId);
     if(ultima && state.turno-ultima.turno < (medida.cooldown||3)) return {ok:false,motivo:`Esta medida ainda está em cooldown por ${Math.max(1,(medida.cooldown||3)-(state.turno-ultima.turno))} mês(es).`};
     if(medida.estatal && !state.estatais.some(e=>e.id===medida.estatal)) return {ok:false,motivo:'A estatal necessária não está sob controle federal.'};
+    const basePolitico=medida.capitalBase|| (Math.abs(medida.impactoFiscal||0)>10000?4:Math.abs(medida.impactoFiscal||0)>3000?3:2);
+    const custoPolitico=custoPoliticoEfetivo(basePolitico,state,basePolitico>=4?'grande':'normal');
+    if(state.capitalPolitico<custoPolitico) return {ok:false,motivo:`Capital político insuficiente: a medida exige ${custoPolitico} CP.`};
     set(current=>{
       const ministroFazenda=current.nomeacoes.find(n=>n.cargoId==='m_fazenda');
       const eficienciaFazenda=ministroFazenda?clamp(.78+((ministroFazenda.habTecnica||ministroFazenda.habilidadeTecnica||50)/100)*.28+((ministroFazenda.lealdade||60)/100)*.09,.78,1.15):.72;
       let economia=registrarMovimentoFiscal(current.economia,medida.impactoFiscal,medida.tipoFiscal||'custeio');
-      Object.entries(medida.economia||{}).forEach(([k,v])=>{
-        v=v*eficienciaFazenda;
+      Object.entries(medida.economia||{}).forEach(([k,valor])=>{
+        const v=valor*eficienciaFazenda;
         if(k==='confiancaMercado')economia.confiancaMercado=clamp((economia.confiancaMercado||50)+v);
         else if(k==='riscoPais')economia.riscoPais=Math.max(80,(economia.riscoPais||250)+v);
         else if(k==='inflacao')economia.inflacao=Math.max(.5,(economia.inflacao||4.5)+v);
@@ -2273,9 +2462,28 @@ const useGameStore = create((set, get) => ({
       const media=gerarRepercussao({evento,turno:current.turno});
       const comunidade=gerarPostsComunidade({gruposSociais,turno:current.turno,evento:medida.categoria,quantidade:4,respostaA:media.id});
       const politica={...POLITICA_ECONOMICA_INICIAL,...current.politicaEconomica};
-      return {economia,gruposSociais,estados,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},politicaEconomica:{...politica,medidasUsadas:[{id:medidaId,turno:current.turno},...(politica.medidasUsadas||[]).filter(x=>x.id!==medidaId)].slice(0,30),historico:[{tipo:'medida',id:medidaId,turno:current.turno,eficacia:Number(eficienciaFazenda.toFixed(2))},...(politica.historico||[])].slice(0,40)},redeSocial:{...current.redeSocial,posts:[media,...comunidade,...(current.redeSocial.posts||[])].slice(0,100)},oposicao:{...current.oposicao,forca:clamp((current.oposicao.forca||30)+(Math.abs(medida.impactoFiscal)>10000?1:0))},eventosRecentes:[`💼 Fazenda: ${medida.nome}.`,...current.eventosRecentes].slice(0,18)};
+      const tcu=Number(medida.controle?.tcu||0), stfRisk=Number(medida.controle?.stf||0);
+      let institucional={...current.institucional};
+      const escrutinio=Math.max(tcu,stfRisk);
+      if(escrutinio>=50) institucional.riscoJuridico=clamp((institucional.riscoJuridico||0)+Math.max(.5,(escrutinio-45)/18));
+      if(stfRisk>=70) institucional.tensaoInstitucional=clamp((institucional.tensaoInstitucional||0)+1);
+      let comercio=normalizarComercio(current.comercioExterior||COMERCIO_INICIAL);
+      const ce=medida.comercio||{};
+      Object.entries(ce.exportacoes||{}).forEach(([id,delta])=>{if(comercio.exportacoesPorSetor[id])comercio.exportacoesPorSetor[id].valor=Math.max(100,Math.round(comercio.exportacoesPorSetor[id].valor*(1+Number(delta)*eficienciaFazenda)));});
+      Object.entries(ce.importacoes||{}).forEach(([id,delta])=>{if(comercio.importacoesPorSetor[id])comercio.importacoesPorSetor[id].valor=Math.max(100,Math.round(comercio.importacoesPorSetor[id].valor*(1+Number(delta)*eficienciaFazenda)));});
+      Object.entries(ce.dependencia||{}).forEach(([id,delta])=>{if(comercio.importacoesPorSetor[id])comercio.importacoesPorSetor[id].dependencia=clamp((comercio.importacoesPorSetor[id].dependencia||50)+Number(delta)*eficienciaFazenda);});
+      Object.entries(ce.itens||{}).forEach(([id,delta])=>{const item=comercio.itensEstrategicos?.[id];if(!item)return;item.valor=Math.max(30,Math.round((item.valor||100)*(1+Number(delta)*eficienciaFazenda)));if(item.tipo==='importacao'&&Number(delta)<0)item.dependencia=clamp((item.dependencia||50)+Number(delta)*100);else if(Number(delta)>0)item.potencial=clamp((item.potencial||50)+Number(delta)*80);});
+      Object.entries(ce.politica||{}).forEach(([id,delta])=>{comercio.politica[id]=(comercio.politica[id]||0)+Number(delta);});
+      comercio.exportacoesMensais=Object.values(comercio.exportacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+      comercio.importacoesMensais=Object.values(comercio.importacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+      comercio.balanca=comercio.exportacoesMensais-comercio.importacoesMensais;
+      const alertas=[];
+      if(tcu>=60)alertas.push(`TCU acompanha critérios, contratos e custo fiscal de “${medida.nome}”.`);
+      if(stfRisk>=60)alertas.push(`Risco de judicialização: “${medida.nome}” pode chegar ao STF.`);
+      const notificacoes=[...alertas.map((texto,i)=>({id:`ctrl_${medida.id}_${current.turno}_${i}`,texto,tipo:'institucional',rota:'instituicoes'})),...(current.redeSocial?.notificacoes||[])].slice(0,50);
+      return {economia,comercioExterior:comercio,institucional,gruposSociais,estados,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},capitalPolitico:clamp(current.capitalPolitico-custoPolitico),politicaEconomica:{...politica,medidasUsadas:[{id:medidaId,turno:current.turno},...(politica.medidasUsadas||[]).filter(x=>x.id!==medidaId)].slice(0,30),historico:[{tipo:'medida',id:medidaId,nome:medida.nome,turno:current.turno,eficacia:Number(eficienciaFazenda.toFixed(2)),controle:{tcu,stf:stfRisk},impactoFiscal:medida.impactoFiscal||0},...(politica.historico||[])].slice(0,50)},redeSocial:{...current.redeSocial,notificacoes,posts:[media,...comunidade,...(current.redeSocial.posts||[])].slice(0,100)},oposicao:{...current.oposicao,forca:clamp((current.oposicao.forca||30)+(Math.abs(medida.impactoFiscal)>10000?1:0)+(stfRisk>=70?.5:0))},eventosRecentes:[...alertas.map(x=>`⚖️ ${x}`),`💼 Fazenda: ${medida.nome}.`,...current.eventosRecentes].slice(0,18)};
     });
-    saveGame(get());return {ok:true,medida};
+    saveGame(get());return {ok:true,medida,custoPolitico};
   },
 
   contratarFinanciamentoEconomico: (financiamentoId) => {
@@ -2284,6 +2492,8 @@ const useGameStore = create((set, get) => ({
     const politica={...POLITICA_ECONOMICA_INICIAL,...state.politicaEconomica};
     const anterior=(politica.financiamentos||[]).find(f=>f.id===financiamentoId && state.turno-f.turno<12);
     if(anterior)return {ok:false,motivo:'Esta fonte já foi mobilizada recentemente. Aguarde nova janela financeira.'};
+    const custoPolitico=custoPoliticoEfetivo((oferta.valor||0)>=25000?3:2,state,(oferta.valor||0)>=25000?'grande':'normal');
+    if(state.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: mobilizar esta fonte exige ${custoPolitico} CP.`};
     set(current=>{
       let economia=registrarMovimentoFiscal(current.economia,oferta.valor,oferta.tipoFiscal);
       Object.entries(oferta.economia||{}).forEach(([k,v])=>{
@@ -2303,9 +2513,9 @@ const useGameStore = create((set, get) => ({
       const evento=`Fazenda fecha ${oferta.nome} para financiar investimento de R$ ${(oferta.valor/1000).toFixed(1)} bi.`;
       const media=gerarRepercussao({evento,turno:current.turno});
       const comunidade=gerarPostsComunidade({gruposSociais,turno:current.turno,evento:'financiamento',quantidade:3,respostaA:media.id});
-      return {economia,mundo,gruposSociais,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},politicaEconomica:{...p,dividaComposicao:comp,financiamentos:[{...oferta,turno:current.turno,status:'contratado'},...(p.financiamentos||[])].slice(0,20),historico:[{tipo:'financiamento',id:oferta.id,turno:current.turno},...(p.historico||[])].slice(0,40)},redeSocial:{...current.redeSocial,posts:[media,...comunidade,...(current.redeSocial.posts||[])].slice(0,100)},eventosRecentes:[`🏦 ${evento}`,...current.eventosRecentes].slice(0,18)};
+      return {economia,mundo,gruposSociais,popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},capitalPolitico:clamp(current.capitalPolitico-custoPolitico),politicaEconomica:{...p,dividaComposicao:comp,financiamentos:[{...oferta,turno:current.turno,status:'contratado'},...(p.financiamentos||[])].slice(0,20),historico:[{tipo:'financiamento',id:oferta.id,turno:current.turno},...(p.historico||[])].slice(0,40)},redeSocial:{...current.redeSocial,posts:[media,...comunidade,...(current.redeSocial.posts||[])].slice(0,100)},eventosRecentes:[`🏦 ${evento}`,...current.eventosRecentes].slice(0,18)};
     });
-    saveGame(get());return {ok:true,oferta};
+    saveGame(get());return {ok:true,oferta,custoPolitico};
   },
 
   definirEstrategiaDivida: (estrategiaId) => {
@@ -2384,6 +2594,10 @@ const useGameStore = create((set, get) => ({
   },
 
   investirEstado: (uf, tipo='infraestrutura') => {
+    const estadoInicial=get();
+    if(!estadoInicial.estados.some(e=>e.uf===uf))return {ok:false,motivo:'Estado não encontrado.'};
+    const custoPolitico=custoPoliticoEfetivo(2,estadoInicial,'normal');
+    if(estadoInicial.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: articular o investimento exige ${custoPolitico} CP.`};
     const custos={infraestrutura:900,saude:520,educacao:480,seguranca:420,tecnologia:650};
     const custo=custos[tipo]||500;
     const impactos={
@@ -2405,23 +2619,42 @@ const useGameStore = create((set, get) => ({
         const atualizado={...e,relacaoPlanalto:clamp((e.relacaoPlanalto||50)+5),investimentos:[inv,...(e.investimentos||[])].slice(0,12)};
         return {...atualizado,aprovacao:calcularAprovacaoEstado(atualizado,gruposSociais)};
       });
-      return {economia,gruposSociais,estados,congresso:{...state.congresso,poder:clamp((state.congresso?.poder||0)+2)},eventosRecentes:achou?[`🏗️ Investimento federal em ${uf}: ${tipo} · impacto fiscal R$ ${custo} mi.`,...state.eventosRecentes].slice(0,18):state.eventosRecentes};
+      return {economia,gruposSociais,estados,capitalPolitico:clamp(state.capitalPolitico-custoPolitico),congresso:{...state.congresso,poder:clamp((state.congresso?.poder||0)+2)},eventosRecentes:achou?[`🏗️ Investimento federal em ${uf}: ${tipo} · impacto fiscal R$ ${custo} mi.`,...state.eventosRecentes].slice(0,18):state.eventosRecentes};
     });
-    if(achou)saveGame(get());
-    return {ok:achou,custo};
+    if(achou){
+      set(state=>({politicalAI:addPoliticalMemory(syncPoliticalAI(state.politicalAI||createPoliticalAIState(),state),`gov:${uf}`,{turn:state.turno,type:'investimento',valence:2,title:'Investimento federal',text:`O Planalto autorizou investimento em ${tipo} no estado, fortalecendo a ponte institucional.`})}));
+      saveGame(get());
+    }
+    return {ok:achou,custo,custoPolitico};
   },
 
   conversarGovernador: (uf, estrategia='pacto') => {
+    const state=get();
+    const estadoAtual=state.estados.find(e=>e.uf===uf);
+    const governador=estadoAtual?.governador||null;
+    if(!governador)return {ok:false,motivo:'Governador não encontrado.'};
+    if((governador.ultimaInteracaoPlanaltoTurno||0)===state.turno)return {ok:false,motivo:'O Planalto já fez uma movimentação direta com este governo estadual neste mês.'};
+    const baseCusto={pacto:2,pressionar:1,prestigiar:3}[estrategia]??2;
+    const custoPolitico=custoPoliticoEfetivo(baseCusto,state,estrategia==='prestigiar'?'normal':'baixo');
+    if(state.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: esta articulação exige ${custoPolitico} CP.`};
     const delta={pacto:7,pressionar:-5,prestigiar:10}[estrategia]??5;
-    let governador=null;
-    set(state=>({
-      estados:state.estados.map(e=>{if(e.uf!==uf)return e;governador=e.governador;return {...e,relacaoPlanalto:clamp((e.relacaoPlanalto||50)+delta),governador:{...e.governador,relacao:clamp((e.governador.relacao||50)+delta)}}}),
-      capitalPolitico:clamp(state.capitalPolitico+(estrategia==='pacto'?-2:estrategia==='pressionar'?1:-3)),
-      congresso:{...state.congresso,poder:clamp((state.congresso?.poder||0)+(estrategia==='pacto'?3:estrategia==='prestigiar'?2:-1))},
-      eventosRecentes:governador?[`🤝 Relação federativa: ${estrategia} com ${governador.nome}.`,...state.eventosRecentes].slice(0,18):state.eventosRecentes,
-    }));
-    saveGame(get()); return {ok:!!governador};
+    set(current=>{
+      const estados=current.estados.map(e=>e.uf!==uf?e:{...e,relacaoPlanalto:clamp((e.relacaoPlanalto||50)+delta),governador:{...e.governador,relacao:clamp((e.governador.relacao||50)+delta),ultimaInteracaoPlanaltoTurno:current.turno}});
+      const label={pacto:'Pacto federativo',prestigiar:'Prestígio presidencial',pressionar:'Pressão do Planalto'}[estrategia]||'Contato federativo';
+      const valence=estrategia==='pressionar'?-2:estrategia==='prestigiar'?2:1;
+      const aiBase=syncPoliticalAI(current.politicalAI||createPoliticalAIState(),{...current,estados});
+      const politicalAI=addPoliticalMemory(aiBase,`gov:${uf}`,{turn:current.turno,type:'relacao',valence,title:label,text:`${label}: o Planalto ${estrategia==='pressionar'?'elevou a pressão sobre':'buscou aproximação com'} ${governador.nome}.`});
+      return {
+        estados,politicalAI,
+        capitalPolitico:clamp(current.capitalPolitico-custoPolitico),
+        congresso:{...current.congresso,poder:clamp((current.congresso?.poder||0)+(estrategia==='pacto'?3:estrategia==='prestigiar'?2:-1))},
+        oposicao:{...current.oposicao,forca:clamp((current.oposicao?.forca||30)+(estrategia==='pressionar'?1:0))},
+        eventosRecentes:[`🤝 Relação federativa: ${estrategia} com ${governador.nome} · -${custoPolitico} CP.`,...current.eventosRecentes].slice(0,18),
+      };
+    });
+    saveGame(get()); return {ok:true,governador,custoPolitico};
   },
+
 
   iniciarProjetoEspecial: (projetoId, uf=null) => {
     const state=get(); const base=state.catalogoProjetosEspeciais.find(p=>p.id===projetoId);
@@ -2429,11 +2662,13 @@ const useGameStore = create((set, get) => ({
     if(state.projetosEspeciais.some(p=>p.id===projetoId&&p.status==='ativo'))return {ok:false,motivo:'Este projeto já está em andamento.'};
     const faltantes=base.ministerios.filter(id=>!state.nomeacoes.some(n=>n.cargoId===id));
     if(faltantes.length>1)return {ok:false,motivo:'Faltam ministros essenciais para liderar este projeto.'};
+    const custoPolitico=custoPoliticoEfetivo(5,state,'grande');
+    if(state.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: lançar este projeto exige ${custoPolitico} CP.`};
     const destino=uf||base.estadoSugerido;
     const novo={...base,estado:destino,status:'ativo',progresso:0,mesesRestantes:base.duracao,iniciadoNoTurno:state.turno};
     const parceiros={nuclear_2040:['fr','ru','us'],terras_raras:['us','cn','jp','de'],semicondutores:['us','jp','kr','de'],bio_vacinas:['in','za','de'],ia_brasil:['us','gb','cn'],ferrovia_integracao:['cn','ae','de'],espacial:['us','fr','in'],amazonia_sat:['de','no','fr']}[base.id]||[];
-    set(current=>{let geopolitica={...current.geopolitica};parceiros.forEach(pid=>{geopolitica=abrirJanela(geopolitica,pid,current.turno,3)});return {projetosEspeciais:[novo,...current.projetosEspeciais],geopolitica,economia:registrarMovimentoFiscal(current.economia,Math.round(base.custoMensal*.7),'infraestrutura'),eventosRecentes:[`🧭 Projeto especial lançado: ${base.titulo} em ${destino}. Itamaraty abriu ${parceiros.length} canal(is) estratégico(s).`,...current.eventosRecentes].slice(0,18)}});
-    saveGame(get());return {ok:true,projeto:novo};
+    set(current=>{let geopolitica={...current.geopolitica};parceiros.forEach(pid=>{geopolitica=abrirJanela(geopolitica,pid,current.turno,3)});return {projetosEspeciais:[novo,...current.projetosEspeciais],geopolitica,capitalPolitico:clamp(current.capitalPolitico-custoPolitico),economia:registrarMovimentoFiscal(current.economia,Math.round(base.custoMensal*.7),'infraestrutura'),eventosRecentes:[`🧭 Projeto especial lançado: ${base.titulo} em ${destino}. Itamaraty abriu ${parceiros.length} canal(is) estratégico(s).`,...current.eventosRecentes].slice(0,18)}});
+    saveGame(get());return {ok:true,projeto:novo,custoPolitico};
   },
 
   processarProjetosEspeciais: () => {
@@ -2616,29 +2851,125 @@ const useGameStore = create((set, get) => ({
       const turnoExecucao=state.turno+1;
       const vencidas=(state.consequenciasPendentes||[]).filter(c=>c.status==='pendente'&&c.turnoAlvo<=turnoExecucao);
       if(!vencidas.length)return {};
-      let economia={...state.economia}; let institucional={...state.institucional}; let oposicao={...state.oposicao}; let congresso={...state.congresso}; let gruposSociais={...state.gruposSociais}; let eventosRecentes=[...state.eventosRecentes]; let redeSocial={...state.redeSocial,posts:[...(state.redeSocial?.posts||[])]};
+      let economia={...state.economia};
+      let institucional={...state.institucional};
+      let oposicao={...state.oposicao};
+      let congresso={...state.congresso};
+      let gruposSociais={...state.gruposSociais};
+      let estados=(state.estados||[]).map(e=>({...e,governador:{...(e.governador||{})}}));
+      let paises=(state.paises||[]).map(p=>({...p}));
+      let mundo={...state.mundo};
+      let comercioExterior=normalizarComercio(state.comercioExterior||COMERCIO_INICIAL);
+      let capitalPolitico=state.capitalPolitico;
+      let climaGoverno=state.climaGoverno;
+      let eventosRecentes=[...state.eventosRecentes];
+      let redeSocial={...state.redeSocial,posts:[...(state.redeSocial?.posts||[])]};
       const resolvidas=[];
+      const cascatasResolvidas=new Set();
+
       vencidas.forEach(c=>{
         const e=c.efeitos||{};
         if(e.fiscal) economia=registrarMovimentoFiscal(economia,e.fiscal,e.tipoFiscal||'custeio');
-        if(e.crescimento) economia.crescimentoPib=Number(((economia.crescimentoPib||0)+e.crescimento).toFixed(2));
+        if(e.crescimento) economia.crescimentoPib=Number(((economia.crescimentoPib||0)+e.crescimento).toFixed(3));
+        if(e.capitalPolitico) capitalPolitico=clamp(capitalPolitico+e.capitalPolitico);
+        if(e.climaGoverno) climaGoverno=clamp(climaGoverno+e.climaGoverno);
         if(e.riscoJuridico) institucional.riscoJuridico=clamp((institucional.riscoJuridico||0)+e.riscoJuridico);
         if(e.oposicao) oposicao.forca=clamp((oposicao.forca||30)+e.oposicao);
         if(e.congresso) congresso.poder=clamp((congresso.poder||0)+e.congresso);
         if(e.grupos) gruposSociais=aplicarImpactoGrupos(gruposSociais,e.grupos);
-        const noticia=gerarRepercussao({evento:`Desdobramento de decisão presidencial: ${c.titulo}`,turno:turnoExecucao});
-        redeSocial.posts=[noticia,...gerarPostsComunidade({gruposSociais,turno:turnoExecucao,evento:c.origem==='federacao'?'federalismo':'governo',quantidade:2,respostaA:noticia.id}),...redeSocial.posts].slice(0,120);
+
+        Object.entries(e.economia||{}).forEach(([key,delta])=>{
+          const atual=Number(economia[key]??0);
+          if(key==='confiancaMercado')economia[key]=clamp(atual+Number(delta||0));
+          else if(key==='riscoPais')economia[key]=Math.max(60,atual+Number(delta||0));
+          else if(key==='inflacao'||key==='desemprego')economia[key]=Math.max(.1,Number((atual+Number(delta||0)).toFixed(3)));
+          else economia[key]=Number((atual+Number(delta||0)).toFixed(3));
+        });
+        Object.entries(e.institucional||{}).forEach(([key,delta])=>{
+          institucional[key]=clamp(Number(institucional[key]??0)+Number(delta||0));
+        });
+        Object.entries(e.mundo||{}).forEach(([key,delta])=>{
+          const valor=Number(mundo[key]??0)+Number(delta||0);
+          mundo[key]=['softPowerBrasil','liderancaAmbiental','tensaoGlobal'].includes(key)?clamp(valor):valor;
+        });
+        Object.entries(e.relacoes||{}).forEach(([paisId,delta])=>{
+          paises=paises.map(p=>p.id===paisId?{...p,relacao:clamp((p.relacao??50)+Number(delta||0))}:p);
+        });
+
+        if(e.comercio){
+          Object.entries(e.comercio.exportacoes||{}).forEach(([setor,percentual])=>{
+            const item=comercioExterior.exportacoesPorSetor?.[setor];
+            if(item)item.valor=Math.max(0,Math.round(item.valor*(1+Number(percentual||0))));
+          });
+          Object.entries(e.comercio.importacoes||{}).forEach(([setor,percentual])=>{
+            const item=comercioExterior.importacoesPorSetor?.[setor];
+            if(item)item.valor=Math.max(0,Math.round(item.valor*(1+Number(percentual||0))));
+          });
+          Object.entries(e.comercio.parceiros||{}).forEach(([paisId,delta])=>{
+            const parceiro=comercioExterior.parceiros?.[paisId];
+            if(parceiro)parceiro.acesso=clamp((parceiro.acesso||50)+Number(delta||0));
+          });
+          Object.entries(e.comercio.preferencias||{}).forEach(([paisId,delta])=>{
+            const parceiro=comercioExterior.parceiros?.[paisId];
+            if(parceiro)parceiro.preferencia=clamp((parceiro.preferencia||0)+Number(delta||0),-30,30);
+            comercioExterior.concorrenciaGeopolitica={...(comercioExterior.concorrenciaGeopolitica||{}),preferencias:{...(comercioExterior.concorrenciaGeopolitica?.preferencias||{}),[paisId]:clamp(Number(comercioExterior.concorrenciaGeopolitica?.preferencias?.[paisId]||0)+Number(delta||0),-30,30)}};
+          });
+          Object.entries(e.comercio.tensoes||{}).forEach(([paisId,delta])=>{
+            const lista=[...(comercioExterior.concorrenciaGeopolitica?.tensoes||[])];
+            const idx=lista.findIndex(t=>t.paisId===paisId&&t.status!=='encerrada');
+            if(idx>=0)lista[idx]={...lista[idx],intensidade:clamp(Number(lista[idx].intensidade||0)+Number(delta||0),0,100)};
+            else if(Number(delta||0)>0)lista.unshift({id:`cascade_tens_${paisId}_${turnoExecucao}`,paisId,origemId:c.baseId||c.id,titulo:'Tensão comercial em escalada',intensidade:clamp(Number(delta||0),0,100),criadaNoTurno:turnoExecucao,status:'ativa'});
+            comercioExterior.concorrenciaGeopolitica={...(comercioExterior.concorrenciaGeopolitica||{}),tensoes:lista.filter(t=>(t.intensidade||0)>5).slice(0,20)};
+          });
+          Object.entries(e.comercio.itens||{}).forEach(([itemId,ajuste])=>{
+            const delta=typeof ajuste==='number'?{valorPct:ajuste}:ajuste||{};
+            const item=comercioExterior.itensEstrategicos?.[itemId];
+            if(!item)return;
+            comercioExterior.itensEstrategicos={...comercioExterior.itensEstrategicos,[itemId]:{...item,
+              valor:Math.max(0,Math.round(Number(item.valor||0)*(1+Number(delta.valorPct||0)))),
+              dependencia:clamp(Number(item.dependencia||0)+Number(delta.dependencia||0)),
+              potencial:clamp(Number(item.potencial||0)+Number(delta.potencial||0)),
+              capacidadeDomestica:clamp(Number(item.capacidadeDomestica||0)+Number(delta.capacidadeDomestica||0)),
+            }};
+          });
+          comercioExterior.exportacoesMensais=Object.values(comercioExterior.exportacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+          comercioExterior.importacoesMensais=Object.values(comercioExterior.importacoesPorSetor||{}).reduce((a,x)=>a+(x.valor||0),0);
+          comercioExterior.balanca=comercioExterior.exportacoesMensais-comercioExterior.importacoesMensais;
+        }
+
+        if(e.estados?.ufs?.length){
+          const ufs=new Set(e.estados.ufs);
+          estados=estados.map(estado=>{
+            if(!ufs.has(estado.uf))return estado;
+            const deltaRel=Number(e.estados.relacao||0);
+            const rel=clamp((estado.relacaoPlanalto??50)+deltaRel);
+            const relGov=clamp((estado.governador?.relacao??estado.relacaoPlanalto??50)+deltaRel);
+            return {...estado,
+              aprovacao:clamp((estado.aprovacao??50)+Number(e.estados.aprovacao||0)),
+              relacaoPlanalto:rel,
+              governador:{...(estado.governador||{}),relacao:relGov},
+            };
+          });
+        }
+
+        const noticia=gerarRepercussao({evento:`Desdobramento: ${c.titulo}`,turno:turnoExecucao});
+        redeSocial.posts=[noticia,...gerarPostsComunidade({gruposSociais,turno:turnoExecucao,evento:c.origem==='federacao'?'federalismo':c.origem==='cascata'?'efeito dominó':'governo',quantidade:2,respostaA:noticia.id}),...redeSocial.posts].slice(0,120);
         eventosRecentes=[`⏳ Consequência amadureceu: ${c.titulo}.`,...eventosRecentes];
         resolvidas.push({...c,status:'resolvida',resolvidoNoTurno:turnoExecucao});
+        if(c.origem==='cascata')cascatasResolvidas.add(c.baseId||c.id);
       });
       const pendentes=(state.consequenciasPendentes||[]).filter(c=>!vencidas.some(v=>v.id===c.id));
-      return {economia,institucional,oposicao,congresso,gruposSociais,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},redeSocial:{...redeSocial,tendencias:calcularTendenciasPulso(redeSocial.posts)},consequenciasPendentes:pendentes,historicoConsequencias:[...resolvidas,...(state.historicoConsequencias||[])].slice(0,50),eventosRecentes:eventosRecentes.slice(0,18)};
+      const historicoCascatas=(state.historicoCascatas||[]).map(c=>cascatasResolvidas.has(c.baseId||c.id)?{...c,status:'resolvida',resolvidoNoTurno:turnoExecucao}:c);
+      return {economia,institucional,oposicao,congresso,gruposSociais,estados,paises,mundo,comercioExterior,capitalPolitico,climaGoverno,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},redeSocial:{...redeSocial,tendencias:calcularTendenciasPulso(redeSocial.posts)},consequenciasPendentes:pendentes,historicoCascatas,historicoConsequencias:[...resolvidas,...(state.historicoConsequencias||[])].slice(0,70),eventosRecentes:eventosRecentes.slice(0,18)};
     });
   },
 
   ajustarTarifaComercial: (setor, delta) => {
-    const r=ajustarTarifaSetorial(get().comercioExterior,setor,delta); if(!r.ok)return r;
-    set(state=>{let economia={...state.economia};economia.inflacao=Math.max(.5,economia.inflacao+(delta>0 ? .05 : -.04));economia.confiancaMercado=clamp(economia.confiancaMercado+(delta>0?-1:.5));return {comercioExterior:r.comercio,economia,eventosRecentes:[`🚢 Tarifa de ${r.item.nome} ajustada para ${r.item.tarifa}%.`,...state.eventosRecentes].slice(0,18)}});saveGame(get());return r;
+    const state=get();
+    const custoPolitico=custoPoliticoEfetivo(1,state,'baixo');
+    if(state.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: a mudança tarifária exige ${custoPolitico} CP.`};
+    const r=ajustarTarifaSetorial(state.comercioExterior,setor,delta); if(!r.ok)return r;
+    set(state=>{let economia={...state.economia};economia.inflacao=Math.max(.5,economia.inflacao+(delta>0 ? .05 : -.04));economia.confiancaMercado=clamp(economia.confiancaMercado+(delta>0?-1:.5));return {comercioExterior:r.comercio,economia,capitalPolitico:clamp(state.capitalPolitico-custoPolitico),eventosRecentes:[`🚢 Tarifa de ${r.item.nome} ajustada para ${r.item.tarifa}%.`,...state.eventosRecentes].slice(0,18)}});saveGame(get());return {...r,custoPolitico};
   },
 
   estimularExportacao: (setorId) => {
@@ -2649,8 +2980,19 @@ const useGameStore = create((set, get) => ({
 
   aceitarOportunidadeComercial: (id) => {
     const s=get(); const op=(s.comercioExterior?.oportunidades||[]).find(o=>o.id===id); if(!op)return {ok:false,motivo:'Oportunidade não encontrada.'};
-    if(s.capitalPolitico<1)return {ok:false,motivo:'Capital político insuficiente para fechar o acordo.'};
-    set(state=>{const comercio=JSON.parse(JSON.stringify(state.comercioExterior));comercio.oportunidades=(comercio.oportunidades||[]).filter(o=>o.id!==id);comercio.acordos=[{id:`ac_${id}_${state.turno}`,origemId:id,paisId:op.paisId,titulo:op.titulo,setor:op.setor,valor:op.valor,turno:state.turno},...(comercio.acordos||[])].slice(0,30);if(op.tipo==='exportacao'&&comercio.exportacoesPorSetor[op.setor])comercio.exportacoesPorSetor[op.setor].valor+=Math.round(op.valor*.25);return {comercioExterior:comercio,capitalPolitico:state.capitalPolitico-1,paises:state.paises.map(p=>p.id===op.paisId?{...p,relacao:clamp(p.relacao+3)}:p),eventosRecentes:[`🤝 Acordo comercial: ${op.titulo}.`,...state.eventosRecentes].slice(0,18)}});saveGame(get());return {ok:true};
+    const custoPolitico=custoPoliticoEfetivo(op.produtoId?2:1,s,op.produtoId?'normal':'baixo');
+    if(s.capitalPolitico<custoPolitico)return {ok:false,motivo:`Capital político insuficiente: o acordo exige ${custoPolitico} CP.`};
+    set(state=>{
+      let comercio=aplicarPreferenciaComercial(state.comercioExterior,op,state.turno);
+      comercio.oportunidades=(comercio.oportunidades||[]).filter(o=>o.id!==id);
+      comercio.acordos=[{id:`ac_${id}_${state.turno}`,origemId:id,paisId:op.paisId,titulo:op.titulo,setor:op.setor,produtoId:op.produtoId||null,valor:op.valor,turno:state.turno},...(comercio.acordos||[])].slice(0,30);
+      if(op.tipo==='exportacao'&&comercio.exportacoesPorSetor[op.setor])comercio.exportacoesPorSetor[op.setor].valor+=Math.round(op.valor*.25);
+      if(op.tipo==='importacao_estrategica'&&comercio.importacoesPorSetor[op.setor])comercio.importacoesPorSetor[op.setor].dependencia=clamp((comercio.importacoesPorSetor[op.setor].dependencia||50)-3);
+      const paises=state.paises.map(p=>{let delta=p.id===op.paisId?3:0;if(op.rivalidades?.[p.id])delta+=Number(op.rivalidades[p.id]);return delta?{...p,relacao:clamp((p.relacao||50)+delta)}:p;});
+      const rivais=Object.entries(op.rivalidades||{}).filter(([,v])=>Number(v)<0).map(([pid])=>state.paises.find(p=>p.id===pid)?.nome||pid).filter(Boolean);
+      const geopolitica={...state.geopolitica,credibilidadeDiplomatica:clamp((state.geopolitica?.credibilidadeDiplomatica||50)+(rivais.length?-0.5:0.5))};
+      return {comercioExterior:comercio,geopolitica,paises,capitalPolitico:clamp(state.capitalPolitico-custoPolitico),eventosRecentes:[`🤝 Acordo comercial: ${op.titulo}.${rivais.length?` ${rivais.join(' e ')} demonstram desconforto com a preferência concedida.`:''}`,...state.eventosRecentes].slice(0,18)};
+    });saveGame(get());return {ok:true,custoPolitico};
   },
 
   obterVicePoolEleitoral: () => prepararVicePool({
@@ -2816,6 +3158,192 @@ const useGameStore = create((set, get) => ({
     saveGame(get());
   },
 
+  processarTurnoPoliticoGlobal: () => {
+    const state=get();
+    const {ai,movement}=processPoliticalAI(state.politicalAI||createPoliticalAIState(),state);
+    set(current=>{
+      if(!movement) return {politicalAI:ai};
+      let estados=(current.estados||[]).map(e=>({...e,governador:{...(e.governador||{})}}));
+      let nomeacoes=[...(current.nomeacoes||[])];
+      let atoresCongresso=(current.atoresCongresso||[]).map(a=>({...a}));
+      let congresso={...current.congresso};
+      let oposicao={...current.oposicao};
+      let climaGoverno=current.climaGoverno;
+      let capitalPolitico=current.capitalPolitico;
+      let politicalAI=ai;
+      let eleicao={...current.eleicao,modificadoresEstados:{...(current.eleicao?.modificadoresEstados||{})}};
+      const actor=politicalAI.actors?.[movement.actorId];
+      const patchAI=(changes)=>{
+        if(!actor)return;
+        politicalAI={...politicalAI,actors:{...politicalAI.actors,[movement.actorId]:{...actor,...changes}}};
+      };
+
+      if(actor?.type==='governador'){
+        const idx=estados.findIndex(e=>e.uf===actor.sourceId);
+        if(idx>=0){
+          const gov={...estados[idx].governador};
+          if(movement.kind==='confronto'){
+            gov.relacao=clamp((gov.relacao??actor.relation??50)-4); oposicao.forca=clamp((oposicao.forca||30)+1.5); congresso.poder=clamp((congresso.poder||0)-1); patchAI({relation:gov.relacao});
+          } else if(movement.kind==='aproximacao'){
+            gov.relacao=clamp((gov.relacao??actor.relation??50)+3); congresso.poder=clamp((congresso.poder||0)+1); patchAI({relation:gov.relacao});
+          } else if(movement.kind==='projecao_nacional'){
+            gov.ambicao=clamp((gov.ambicao??actor.ambition??50)+2); gov.projetoNacional=true; patchAI({ambition:gov.ambicao,momentum:clamp((actor.momentum||0)+1,-20,20),careerStatus:'projeto_nacional'});
+          } else if(movement.kind==='apoio_governo'){
+            gov.apoioPresidencial='governo'; eleicao.modificadoresEstados[actor.sourceId]=(eleicao.modificadoresEstados[actor.sourceId]||0)+2.5; congresso.poder=clamp((congresso.poder||50)+1); patchAI({careerStatus:'aliado_eleitoral',momentum:clamp((actor.momentum||0)+1,-20,20)});
+          } else if(movement.kind==='apoio_oposicao'){
+            gov.apoioPresidencial='oposicao'; eleicao.modificadoresEstados[actor.sourceId]=(eleicao.modificadoresEstados[actor.sourceId]||0)-2.5; oposicao.forca=clamp((oposicao.forca||30)+1.5); patchAI({careerStatus:'aliado_oposicao',momentum:clamp((actor.momentum||0)+1,-20,20)});
+          }
+          estados[idx]={...estados[idx],governador:gov,relacaoPlanalto:gov.relacao??estados[idx].relacaoPlanalto};
+        }
+      }
+
+      if(actor?.type==='ministro'){
+        const idx=nomeacoes.findIndex(n=>n.id===actor.sourceId);
+        if(idx>=0){
+          if(movement.kind==='rompimento_ministerial'){
+            nomeacoes=nomeacoes.filter((_,i)=>i!==idx); climaGoverno=clamp((climaGoverno||50)-4); capitalPolitico=clamp((capitalPolitico||0)-2); oposicao.forca=clamp((oposicao.forca||30)+2); patchAI({relation:clamp((actor.relation||30)-6),posture:'fora_do_governo'});
+          } else if(movement.kind==='autonomia_ministerial'){
+            const min={...nomeacoes[idx]}; min.lealdade=clamp((min.lealdade??actor.relation??50)-3); min.ambicao=clamp((min.ambicao??actor.ambition??50)+2); min.tensao=clamp((min.tensao||0)+5); nomeacoes[idx]=min; patchAI({relation:min.lealdade,ambition:min.ambicao});
+          }
+        }
+      }
+
+      if(actor?.type==='congresso'){
+        const idx=atoresCongresso.findIndex(a=>a.id===actor.sourceId);
+        if(idx>=0){
+          const parlamentar={...atoresCongresso[idx]};
+          if(['pressao_congresso','bloqueio_bancada'].includes(movement.kind)){
+            const queda=movement.kind==='bloqueio_bancada'?5:3;
+            parlamentar.relacao=clamp((parlamentar.relacao??actor.relation??50)-queda);
+            congresso.poder=clamp((congresso.poder||0)-(movement.kind==='bloqueio_bancada'?5:3));
+            if(movement.kind==='bloqueio_bancada') capitalPolitico=clamp((capitalPolitico||0)-2);
+            atoresCongresso[idx]=parlamentar; patchAI({relation:parlamentar.relacao});
+          }
+        }
+      }
+
+      return {
+        politicalAI,eleicao,estados,nomeacoes,atoresCongresso,congresso,oposicao,climaGoverno,capitalPolitico,
+        eventosRecentes:[`♟️ Movimento político: ${movement.text}`,...current.eventosRecentes].slice(0,18),
+        redeSocial:{...current.redeSocial,notificacoes:[{id:`political_${movement.id}`,tipo:'politica',texto:movement.text,turno:current.turno},...(current.redeSocial?.notificacoes||[])].slice(0,40)},
+      };
+    });
+    return {ok:true,movement};
+  },
+
+  processarAutonomiaInstitucional: () => {
+    const state=get();
+    const resultado=processInstitutionalAutonomy(state);
+    if(!resultado.evento){
+      if(resultado.institucional!==state.institucional)set({institucional:resultado.institucional});
+      return {ok:true,evento:null};
+    }
+    const base={...state,institucional:resultado.institucional};
+    const efeitos=aplicarEfeitosInstitucionais(base,resultado.evento);
+    const institucional={...resultado.institucional,...(efeitos.institucional||{})};
+    const texto=`${resultado.evento.instituicao}: ${resultado.evento.titulo}`;
+    set(current=>({
+      ...efeitos,
+      institucional,
+      eventosRecentes:[`🏛️ ${texto}.`,...current.eventosRecentes].slice(0,18),
+      redeSocial:{...current.redeSocial,notificacoes:[{
+        id:resultado.evento.idInstancia,tipo:'instituicao',turno:current.turno+1,rota:'instituicoes',
+        texto:`${texto}. ${resultado.evento.texto}`,
+      },...(current.redeSocial?.notificacoes||[])].slice(0,40)},
+    }));
+    return {ok:true,evento:resultado.evento};
+  },
+
+  processarCascatasSistemicas: () => {
+    const state=get();
+    const cascata=gerarCascataSistemica(state);
+    if(!cascata)return {ok:true,cascata:null};
+    const registro=registrarCascata(state,cascata);
+    set(current=>({
+      ...registro,
+      eventosRecentes:[`🕸️ Efeito dominó em formação: ${cascata.titulo}.`,...current.eventosRecentes].slice(0,18),
+      redeSocial:{...current.redeSocial,notificacoes:[{
+        id:`cascade_${cascata.id}`,tipo:'sistemico',turno:current.turno+1,rota:'gabinete',
+        texto:`Efeito dominó: ${cascata.titulo}. ${cascata.descricao}`,
+      },...(current.redeSocial?.notificacoes||[])].slice(0,40)},
+    }));
+    return {ok:true,cascata};
+  },
+
+  processarOrquestradorPolitico: () => {
+    const state=get();
+    const resultado=processPoliticalOrchestrator(state.politicalOrchestrator||createPoliticalOrchestratorState(),state);
+    const item=resultado.headline;
+    set(current=>{
+      let capitalPolitico=current.capitalPolitico;
+      let climaGoverno=current.climaGoverno;
+      let congresso={...current.congresso};
+      let oposicao={...current.oposicao};
+      let economia={...current.economia};
+      let institucional={...current.institucional};
+      let gruposSociais=current.gruposSociais;
+      let estados=(current.estados||[]).map(e=>({...e,governador:{...(e.governador||{})}}));
+      let paises=(current.paises||[]).map(p=>({...p}));
+
+      // A escalada tem efeito real, mas moderado: o grosso do choque continua nos motores setoriais.
+      (resultado.advanced||[]).forEach(evento=>{
+        const e=evento.impact||{};
+        capitalPolitico=clamp(capitalPolitico+(e.capitalPolitico||0));
+        climaGoverno=clamp(climaGoverno+(e.climaGoverno||0));
+        if(e.congresso) congresso.poder=clamp((congresso.poder||50)+e.congresso);
+        if(e.oposicao) oposicao.forca=clamp((oposicao.forca||30)+e.oposicao);
+        if(e.economia){
+          if(e.economia.inflacao) economia.inflacao=Math.max(.5,Number(((economia.inflacao||0)+e.economia.inflacao).toFixed(2)));
+          if(e.economia.confiancaMercado) economia.confiancaMercado=clamp((economia.confiancaMercado||50)+e.economia.confiancaMercado);
+          if(e.economia.riscoPais) economia.riscoPais=Math.max(80,Math.round((economia.riscoPais||250)+e.economia.riscoPais));
+          if(e.economia.crescimentoPib) economia.crescimentoPib=Number(((economia.crescimentoPib||0)+e.economia.crescimentoPib).toFixed(3));
+        }
+        if(e.institucional){
+          institucional.riscoJuridico=clamp((institucional.riscoJuridico||0)+(e.institucional.riscoJuridico||0));
+          institucional.tensaoInstitucional=clamp((institucional.tensaoInstitucional||0)+(e.institucional.tensaoInstitucional||0));
+        }
+        if(e.grupos) gruposSociais=aplicarImpactoGrupos(gruposSociais,e.grupos);
+        if(e.estados?.ufs?.length){
+          estados=estados.map(estado=>!e.estados.ufs.includes(estado.uf)?estado:{
+            ...estado,
+            relacaoPlanalto:clamp((estado.relacaoPlanalto??estado.governador?.relacao??50)+(e.estados.relacao||0)),
+            governador:{...estado.governador,relacao:clamp((estado.governador?.relacao??estado.relacaoPlanalto??50)+(e.estados.relacao||0))},
+          });
+        }
+        if(e.relacoes){
+          paises=paises.map(p=>e.relacoes[p.id]==null?p:{...p,relacao:clamp((p.relacao||50)+e.relacoes[p.id])});
+        }
+      });
+
+      const notification=item?{
+        id:`orchestrator_${item.id}_${current.turno+1}`,
+        tipo:'enredo',turno:current.turno+1,rota:'gabinete',
+        texto:`${item.title}: ${item.stageLabel||item.resolution||item.summary}`,
+      }:null;
+      const noticia=item?`🧭 ${item.title}: ${item.stageLabel||item.resolution||'novo capítulo'}.`:null;
+      return {
+        politicalOrchestrator:resultado.orchestrator,
+        capitalPolitico,climaGoverno,congresso,oposicao,economia,institucional,gruposSociais,estados,paises,
+        popularidade:{...current.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},
+        eventosRecentes:noticia?[noticia,...current.eventosRecentes].slice(0,18):current.eventosRecentes,
+        redeSocial:notification?{...current.redeSocial,notificacoes:[notification,...(current.redeSocial?.notificacoes||[])].slice(0,40)}:current.redeSocial,
+      };
+    });
+    return {ok:true,...resultado};
+  },
+
+  processarGovernabilidadeMensal: () => {
+    const state=get();
+    const resultado=aplicarVariacaoMensalCapital(state);
+    const delta=resultado.registro.delta;
+    set(current=>({
+      capitalPolitico:resultado.capitalPolitico,
+      governabilidade:resultado.governabilidade,
+      eventosRecentes:delta!==0?[`${delta>0?'📈':'📉'} Capital político ${delta>0?'ganhou':'perdeu'} ${Math.abs(delta)} ponto(s) no fechamento do mês.`,...current.eventosRecentes].slice(0,18):current.eventosRecentes,
+    }));
+    return resultado;
+  },
+
   proximoTurno: () => {
     const antes = get();
     const snapshot = {
@@ -2827,6 +3355,7 @@ const useGameStore = create((set, get) => ({
       risco: antes.economia.riscoPais,
       primario: antes.economia.resultadoPrimario,
       selic: antes.economia.selic,
+      capitalPolitico: antes.capitalPolitico,
       apoioEleitoral: (()=>{ const den=(antes.estados||[]).reduce((a,e)=>a+(e.eleitoradoPeso||1),0)||1; return (antes.estados||[]).reduce((a,e)=>a+(e.aprovacao||50)*(e.eleitoradoPeso||1),0)/den; })(),
     };
 
@@ -2838,6 +3367,7 @@ const useGameStore = create((set, get) => ({
     get().processarTurnoMinisterios();
     get().processarTurnoInternacional();
     get().processarInstitucional();
+    get().processarAutonomiaInstitucional();
     get().processarTurnoJudiciario();
     get().processarTurnoCongresso();
     get().processarEventosNacionais();
@@ -2845,7 +3375,10 @@ const useGameStore = create((set, get) => ({
     get().processarTurnoEstatais();
     get().processarTurnoOposicao();
     get().processarEventosFederativos();
+    get().processarTurnoPoliticoGlobal();
+    get().processarCascatasSistemicas();
     get().processarConsequenciasPendentes();
+    get().processarOrquestradorPolitico();
     get().processarParceriasEmpresariais();
     get().processarProgramasGovernamentais();
 
@@ -2868,7 +3401,7 @@ const useGameStore = create((set, get) => ({
       const fiscal=processarFiscalMensal(economia,state.institucional,state.turno);
       economia=fiscal.economia;
       economia.pib=Math.round((economia.pib||10000000)*(1+(economia.crescimentoPib||0)/1200));
-      const comercioExterior=processarComercioMensal(state.comercioExterior||COMERCIO_INICIAL,{...economia,turno:state.turno+1},{...state.mundo,sancoesAtivas:state.geopolitica?.sancoesAtivas||[]});
+      const comercioExterior=processarComercioMensal(state.comercioExterior||COMERCIO_INICIAL,{...economia,turno:state.turno+1},{...state.mundo,paises:state.paises,sancoesAtivas:state.geopolitica?.sancoesAtivas||[]});
       if((comercioExterior.balanca||0)>5000) economia.confiancaMercado=clamp((economia.confiancaMercado||50)+.4);
       if((comercioExterior.balanca||0)<0) economia.riscoPais=Math.max(80,(economia.riscoPais||250)+2);
 
@@ -2916,7 +3449,7 @@ const useGameStore = create((set, get) => ({
       const relatorioTurno={
         turno:state.turno+1,data:`${meses[novaData.getMonth()]} ${novaData.getFullYear()}`,manchetes,
         antes:snapshot,
-        depois:{aprovacao:popularidade.geral,apoioEleitoral,pib:economia.pib,inflacao:economia.inflacao,desemprego:economia.desemprego,divida:economia.dividaPublica,risco:economia.riscoPais,primario:economia.resultadoPrimario,selic:economia.selic},
+        depois:{aprovacao:popularidade.geral,apoioEleitoral,pib:economia.pib,inflacao:economia.inflacao,desemprego:economia.desemprego,divida:economia.dividaPublica,risco:economia.riscoPais,primario:economia.resultadoPrimario,selic:economia.selic,capitalPolitico:state.capitalPolitico},
         grupos:Object.values(gruposSociais).map(g=>({id:g.id,nome:g.nome,aprovacao:g.aprovacao})),
         oposicao:{forca:state.oposicao?.forca||0,estrategia:state.oposicao?.estrategiaAtual?.nome||'Reorganização'},
         eventoFederativo:state.eventoFederativoAtivo?{titulo:state.eventoFederativoAtivo.titulo,uf:state.eventoFederativoAtivo.uf,multiplicador:state.eventoFederativoAtivo.multiplicador}:null,
@@ -2926,6 +3459,7 @@ const useGameStore = create((set, get) => ({
         comercio:{exportacoes:comercioExterior.exportacoesMensais,importacoes:comercioExterior.importacoesMensais,balanca:comercioExterior.balanca,acordos:(comercioExterior.acordos||[]).length,oportunidades:(comercioExterior.oportunidades||[]).length},
         agendaRealizada:(state.agendaCalendario?.historico||[]).filter(h=>h.status==='realizado'&&h.turno===state.turno).slice(0,6).map(h=>({id:h.id,titulo:h.titulo,tipo:h.tipo,local:h.local,dataISO:h.dataISO})),
         programas:(state.programas||[]).filter(p=>['ativo','atrasado','implantacao','concluido'].includes(p.status)).slice(0,5).map(p=>({id:p.id,nome:p.nome,status:p.status,progresso:p.progresso||0,execucao:p.execucao||0,risco:p.riscoExecucao||0,gasto:p.gastoAcumulado||0})),
+        enredos:(state.politicalOrchestrator?.priorityQueue||[]).slice(0,4),
       };
       return {
         turno:state.turno+1,dataAtual:novaData,dataString:`${meses[novaData.getMonth()]} ${novaData.getFullYear()}`,
@@ -2936,6 +3470,13 @@ const useGameStore = create((set, get) => ({
         eventosRecentes:[`📅 ${meses[novaData.getMonth()]} ${novaData.getFullYear()} · relatório presidencial fechado`,...(pontosNaoUsados>=2?[`⚠️ ${pontosNaoUsados} pontos de atenção ficaram sem uso.`]:[]),...state.eventosRecentes].slice(0,18),
       };
     });
+
+    // O balanço de governabilidade é calculado depois do fechamento macro do mês,
+    // para que aprovação, Congresso, fiscal e clima recém-processados entrem no cálculo.
+    get().processarGovernabilidadeMensal();
+    set(current=>({
+      relatorioTurno:current.relatorioTurno?{...current.relatorioTurno,depois:{...current.relatorioTurno.depois,capitalPolitico:current.capitalPolitico}}:current.relatorioTurno,
+    }));
 
     // Acontecimentos audiovisuais agora entram apenas quando o fato político correspondente ocorre.
 

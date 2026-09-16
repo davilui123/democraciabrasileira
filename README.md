@@ -22,9 +22,15 @@ Simulador político em React/Vite no qual o jogador ocupa a Presidência da Rep�
 - **Fase 4.8.1:** Eleições & Pré-campanha — convenções, vice, recursos, pesquisas, IA política global, 27 eleições estaduais, coerência e campanha.
 - **Fase 4.8.2:** acontecimentos audiovisuais persistentes, com Isabela Ferraz como personagem-piloto.
 - **Fase 4.8.3:** Central de Notícias, gabinete incompleto com consequências, STF redistribuído e cenas disparadas por fatos políticos reais do jogo.
-- **Fase 5:** reservada para a primeira gameplay completa e balanceamento.
+- **Fase 4.9:** Motor Político Global — memória de personagens, movimentos autônomos e arquivo com múltiplas campanhas independentes.
+- **Fase 4.9.1:** Movimentação Política Autônoma — ações dos personagens passam a alterar o estado do jogo; dossiês geopolíticos ganham idade e leitura aprofundada no padrão dos ministros.
+- **Fase 4.9.2:** Mundo em Movimento — governos estrangeiros passam a pressionar autonomamente o Planalto, com respostas ramificadas, prazo, consequências, notícias e histórico diplomático.
+- **Fase 4.9.3:** Governabilidade & Efeito Dominó — Capital Político vira freio real de poder; repertório internacional/federativo/institucional cresce e decisões passam a gerar cadeias de consequências entre sistemas.
+- **Fase 4.9.4:** Orquestrador Político — histórias emergentes ganham prioridade, começo/meio/fim, escalada por silêncio, memória temporal, trilha causal e resolução persistente.
+- **Fase 4.9.5:** Comércio Estratégico, Concorrência & Regulação — itens estratégicos, dependências, preferências geopolíticas, concorrência empresarial, novas medidas econômicas, logos/ilustrações com fallback e supervisão TCU/STF.
+- **Fases 5–7:** expansão da gameplay, integração sistêmica, balanceamento e fechamento do ciclo completo de governo.
 
-Consulte `REFACTORACAO_FASE4_8_3_NOTICIAS_GABINETE.md` e `QA_FASE4_8_3.md` para a etapa atual.
+Consulte `REFACTORACAO_FASE4_9_5.md` e `QA_FASE4_9_5.md` para a etapa atual.
 
 ## Executar
 

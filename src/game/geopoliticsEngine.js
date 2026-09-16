@@ -1,4 +1,8 @@
 import { eventosInternacionaisSeed, crisesInternacionaisSeed, lideresPorPais } from '../data/seed/geopolitica.js';
+import { pressoesGeopoliticasSeed } from '../data/seed/pressoesGeopoliticas.js';
+import { pressoesGeopoliticasExtrasSeed } from '../data/seed/pressoesGeopoliticasExtras.js';
+
+const catalogoPressoesGeopoliticas=[...pressoesGeopoliticasSeed,...pressoesGeopoliticasExtrasSeed];
 
 const clamp=(v,min=0,max=100)=>Math.min(max,Math.max(min,Math.round(v)));
 const pick=(arr)=>arr[Math.floor(Math.random()*arr.length)];
@@ -23,6 +27,10 @@ export const GEOPOLITICA_INICIAL = {
   oportunidadesNegociacao:{},
   visitasEstado:[],
   mesUltimaNegociacao:{},
+  pressoesDiplomaticas:[],
+  historicoPressoes:[],
+  ultimaPressaoTurno:0,
+  cooldownsPressao:{},
 };
 
 export function criarFeedInicial(turno=1){
@@ -106,3 +114,94 @@ export function impactoAcaoSoberana(acaoId,pais,geopolitica,mundo,economia){
   if(acaoId==='forca') return {...base,softPower:-10,relacao:-30,riscoPais:55,inflacao:.55,desemprego:.2,tensao:25,prontidao:22,rally:8};
   return base;
 }
+
+const condicaoPressaoAtendida=(base,{paises=[],mundo={},economia={}})=>{
+  const pais=paises.find(p=>p.id===base.paisId);
+  if(!pais) return false;
+  if(base.condicao==='guerra') return !!pais.emGuerra;
+  if(base.condicao==='clima') return (mundo.liderancaAmbiental??40)<78;
+  if(base.condicao==='mercado') return (economia.confiancaMercado??50)>=36;
+  return true;
+};
+
+const pesoPressao=(base,{paises=[],mundo={},economia={}})=>{
+  const pais=paises.find(p=>p.id===base.paisId);
+  const relacao=pais?.relacao??50;
+  let peso=base.prioridade||50;
+  if(base.paisId==='ru') peso+=(mundo.tensaoGlobal||30)*.22+relacao*.16;
+  if(base.paisId==='cn') peso+=relacao*.22+(economia.crescimentoPib<1?6:0);
+  if(base.paisId==='us') peso+=(mundo.tensaoGlobal||30)*.18+(100-relacao)*.2;
+  if(base.paisId==='de') peso+=Math.max(0,65-(mundo.liderancaAmbiental||40))*.35;
+  if(base.paisId==='ar') peso+=8;
+  return peso;
+};
+
+const clonePressure=(base,turno)=>({
+  ...base,
+  id:`pressure_${base.id}_${turno}`,
+  baseId:base.id,
+  turno,
+  prazoTurno:turno+1,
+  status:'pendente',
+  opcoes:(base.opcoes||[]).map(o=>({...o,efeitos:{...(o.efeitos||{})}})),
+  silencio:base.silencio?{...base.silencio,efeitos:{...(base.silencio.efeitos||{})}}:null,
+});
+
+export function gerarPressaoGeopolitica({geopolitica=GEOPOLITICA_INICIAL,paises=[],mundo={},economia={},turno=1,rng=Math.random}){
+  const g={...GEOPOLITICA_INICIAL,...geopolitica};
+  const pendentes=(g.pressoesDiplomaticas||[]).filter(p=>p.status==='pendente');
+  if(pendentes.length>=2) return {geopolitica:g,pressao:null};
+  const distancia=turno-(g.ultimaPressaoTurno||0);
+  if(distancia<2 || turno<2) return {geopolitica:g,pressao:null};
+  const chance=Math.min(.78,.28+(mundo.tensaoGlobal||30)/220+Math.max(0,distancia-3)*.08);
+  if(rng()>chance) return {geopolitica:g,pressao:null};
+  const candidatos=catalogoPressoesGeopoliticas
+    .filter(base=>condicaoPressaoAtendida(base,{paises,mundo,economia}))
+    .filter(base=>turno-(g.cooldownsPressao?.[base.id]||-99)>=(base.cooldown||8))
+    .sort((a,b)=>pesoPressao(b,{paises,mundo,economia})-pesoPressao(a,{paises,mundo,economia}));
+  if(!candidatos.length) return {geopolitica:g,pressao:null};
+  const janela=Math.min(4,candidatos.length);
+  const idx=Math.min(janela-1,Math.floor(rng()*janela));
+  const base=candidatos[idx];
+  const pressao=clonePressure(base,turno);
+  const feedItem={id:`geo_pressure_${base.id}_${turno}`,titulo:base.manchete,tema:'pressao_diplomatica',paises:[base.paisId],gravidade:Math.min(95,Math.round(base.prioridade||60)),fonte:base.fonte,turno,idade:0,pressaoId:pressao.id};
+  return {
+    pressao,
+    geopolitica:{
+      ...g,
+      pressoesDiplomaticas:[pressao,...(g.pressoesDiplomaticas||[])].slice(0,30),
+      ultimaPressaoTurno:turno,
+      cooldownsPressao:{...(g.cooldownsPressao||{}),[base.id]:turno},
+      feed:[feedItem,...(g.feed||[])].slice(0,90),
+      oportunidadesNegociacao:{...(g.oportunidadesNegociacao||{}),[base.paisId]:Math.max(g.oportunidadesNegociacao?.[base.paisId]||0,turno+2)},
+    },
+  };
+}
+
+export function resolverPressaoGeopolitica(geopolitica,pressaoId,opcaoId,turno=1){
+  const g={...GEOPOLITICA_INICIAL,...geopolitica};
+  const pressao=(g.pressoesDiplomaticas||[]).find(p=>p.id===pressaoId);
+  if(!pressao || pressao.status!=='pendente') return {ok:false,motivo:'Esta pressão diplomática já foi encerrada ou não existe.',geopolitica:g};
+  const opcao=(pressao.opcoes||[]).find(o=>o.id===opcaoId);
+  if(!opcao) return {ok:false,motivo:'Resposta diplomática inválida.',geopolitica:g};
+  const resolvida={...pressao,status:'respondida',respostaId:opcao.id,respostaTitulo:opcao.titulo,resolvidoNoTurno:turno};
+  return {
+    ok:true,pressao:resolvida,opcao,
+    geopolitica:{...g,pressoesDiplomaticas:(g.pressoesDiplomaticas||[]).map(p=>p.id===pressaoId?resolvida:p),historicoPressoes:[resolvida,...(g.historicoPressoes||[])].slice(0,40)},
+  };
+}
+
+export function expirarPressoesGeopoliticas(geopolitica,turno=1){
+  const g={...GEOPOLITICA_INICIAL,...geopolitica};
+  const expiradas=[];
+  const lista=(g.pressoesDiplomaticas||[]).map(p=>{
+    if(p.status!=='pendente' || (p.prazoTurno??999)>=turno) return p;
+    const silencio=p.silencio||{titulo:'Ausência de resposta',efeitos:{}};
+    const encerrada={...p,status:'ignorada',respostaId:'silencio',respostaTitulo:silencio.titulo,resolvidoNoTurno:turno};
+    expiradas.push({pressao:encerrada,opcao:silencio});
+    return encerrada;
+  });
+  if(!expiradas.length) return {geopolitica:g,expiradas:[]};
+  return {geopolitica:{...g,pressoesDiplomaticas:lista,historicoPressoes:[...expiradas.map(x=>x.pressao),...(g.historicoPressoes||[])].slice(0,40)},expiradas};
+}
+

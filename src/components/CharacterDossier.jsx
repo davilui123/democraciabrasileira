@@ -10,7 +10,7 @@ const normalizeTags=(person)=>[
   ...(person?.aversoes||[]).slice(0,2).map(x=>`evita: ${x}`),
 ].filter(Boolean).slice(0,7);
 
-export function CharacterDossierPanel({person,eyebrow='Dossiê',subtitle='',imageKey,stats=[]}){
+export function CharacterDossierPanel({person,eyebrow='Dossiê',subtitle='',imageKey,stats=[],memories=[]}){
   if(!person)return null;
   const trajectory=person.trajetoria||person.passado||person.biografia||person.descricao;
   const agenda=person.agendaPessoal||person.agenda||person.teseCentral||person.interesses?.join(' · ');
@@ -43,18 +43,19 @@ export function CharacterDossierPanel({person,eyebrow='Dossiê',subtitle='',imag
       {episode&&<Block icon={BadgeInfo} title="Episódio / estilo definidor" text={episode}/>} 
       {how&&<Block icon={Compass} title="Como lidar" text={how}/>} 
       {legacy&&<div className="sm:col-span-2 rounded-2xl border border-warning/20 bg-warning/5 p-4"><div className="ui-kicker text-warning">Ambição / legado</div><p className="mt-2 text-sm leading-relaxed text-text/80">{legacy}</p></div>}
+      {memories.length>0&&<div className="sm:col-span-2 rounded-2xl border border-info/20 bg-info/5 p-4"><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-2"><History size={15} className="text-info"/><div className="ui-kicker text-info">Memória política</div></div><span className="ui-chip">últimos {Math.min(memories.length,5)}</span></div><div className="mt-3 space-y-2">{memories.slice(0,5).map(m=><div key={m.id} className="rounded-xl border border-border bg-card/35 p-3"><div className="flex items-center justify-between gap-3"><div className="text-xs font-black">{m.title}</div><span className={`text-[9px] font-black uppercase ${m.valence>0?'text-success':m.valence<0?'text-danger':'text-muted'}`}>Turno {m.turn||'—'}</span></div><p className="mt-1 text-[11px] leading-relaxed text-muted">{m.text}</p></div>)}</div></div>}
     </section>
   </div>;
 }
 
 function Block({icon:Icon,title,text}){return <div className="rounded-2xl border border-border bg-panel/38 p-4"><div className="flex items-center gap-2"><Icon size={15} className="text-info"/><div className="ui-kicker">{title}</div></div><p className="mt-2 text-sm leading-relaxed text-text/75">{text}</p></div>}
 
-export default function CharacterDossierModal({person,onClose,eyebrow,subtitle,imageKey,stats=[]}){
+export default function CharacterDossierModal({person,onClose,eyebrow,subtitle,imageKey,stats=[],memories=[]}){
   if(!person)return null;
   return <div className="fixed inset-0 z-[150] grid place-items-center bg-black/75 p-3 backdrop-blur-xl" onMouseDown={e=>{if(e.target===e.currentTarget)onClose?.()}}>
     <section className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-elevation-5">
       <header className="flex shrink-0 items-center justify-between border-b border-border bg-panel/80 px-5 py-4"><div><div className="ui-kicker">Arquivo reservado</div><h2 className="mt-1 text-lg font-black">Dossiê de personagem</h2></div><button onClick={onClose} className="ui-btn-secondary px-3"><X size={17}/></button></header>
-      <div className="min-h-0 flex-1 overflow-y-auto p-5"><CharacterDossierPanel person={person} eyebrow={eyebrow} subtitle={subtitle} imageKey={imageKey} stats={stats}/></div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-5"><CharacterDossierPanel person={person} eyebrow={eyebrow} subtitle={subtitle} imageKey={imageKey} stats={stats} memories={memories}/></div>
     </section>
   </div>;
 }

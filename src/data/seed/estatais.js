@@ -3,7 +3,7 @@
 
 export const estataisSeed = [
   {
-    id:'petro',nome:'Petrobras',sigla:'PETRO',setor:'Energia',eixo:'soberania',valorMercado:350000,lucroAnual:40000,eficiencia:76,missaoPublica:67,governanca:72,exposicaoPolitica:88,empregos:84,capacidadeInvestimento:90,
+    id:'petro',logo:'/logos/companies/petro.webp',imagem:'/companies/petro.webp',contextoConcorrencia:'Disputa mercado e investimento com produtores privados e fornecedores globais de energia; preço doméstico afeta inflação e concorrência.',nome:'Petrobras',sigla:'PETRO',setor:'Energia',eixo:'soberania',valorMercado:350000,lucroAnual:40000,eficiencia:76,missaoPublica:67,governanca:72,exposicaoPolitica:88,empregos:84,capacidadeInvestimento:90,
     descricao:'Gigante de energia e principal instrumento estatal para petróleo, refino, gás e transição energética.',
     tensao:'Preço de combustíveis × dividendos × investimento de longo prazo.',
     tags:['energia','soberania','inflacao'],
@@ -14,7 +14,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'bb',nome:'Banco do Brasil',sigla:'BB',setor:'Financeiro',eixo:'credito',valorMercado:150000,lucroAnual:25000,eficiencia:84,missaoPublica:62,governanca:82,exposicaoPolitica:66,empregos:71,capacidadeInvestimento:79,
+    id:'bb',logo:'/logos/companies/bb.webp',imagem:'/companies/bb.webp',contextoConcorrencia:'Concorre com bancos privados e fintechs por crédito, agro e varejo; uso direcionado de crédito atrai escrutínio.',nome:'Banco do Brasil',sigla:'BB',setor:'Financeiro',eixo:'credito',valorMercado:150000,lucroAnual:25000,eficiencia:84,missaoPublica:62,governanca:82,exposicaoPolitica:66,empregos:71,capacidadeInvestimento:79,
     descricao:'Banco comercial de controle estatal, com presença no agro, empresas e varejo.',tensao:'Rentabilidade × crédito direcionado × competição bancária.',tags:['credito','agro','mercado'],
     diretrizes:[
       {id:'bb_agro',nome:'Safra e cooperativas',texto:'Expandir crédito para produção, armazenagem e cooperativas.',impactoFiscal:-450,missao:2,grupos:{agro:4,mercado:1,universitarios:-1},crescimento:0.03},
@@ -23,7 +23,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'caixa',nome:'Caixa Econômica Federal',sigla:'CAIXA',setor:'Financeiro',eixo:'credito',valorMercado:100000,lucroAnual:15000,eficiencia:68,missaoPublica:91,governanca:73,exposicaoPolitica:79,empregos:78,capacidadeInvestimento:72,
+    id:'caixa',logo:'/logos/companies/caixa.webp',imagem:'/companies/caixa.webp',contextoConcorrencia:'Concorre em varejo, habitação e infraestrutura, preservando missão pública e exposição fiscal.',nome:'Caixa Econômica Federal',sigla:'CAIXA',setor:'Financeiro',eixo:'credito',valorMercado:100000,lucroAnual:15000,eficiencia:68,missaoPublica:91,governanca:73,exposicaoPolitica:79,empregos:78,capacidadeInvestimento:72,
     descricao:'Principal braço de habitação, infraestrutura urbana, benefícios sociais e loterias.',tensao:'Habitação popular × risco de crédito × execução de políticas sociais.',tags:['habitacao','social','credito'],
     diretrizes:[
       {id:'caixa_habitacao',nome:'Mutirão habitacional',texto:'Aumentar financiamento e subsídio cruzado para moradia popular.',impactoFiscal:-1100,missao:4,grupos:{periferia:4,sindicalistas:1,mercado:-2},crescimento:0.04},
@@ -32,7 +32,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'correios',nome:'Correios',sigla:'ECT',setor:'Logística',eixo:'servicos',valorMercado:12000,lucroAnual:600,eficiencia:49,missaoPublica:94,governanca:61,exposicaoPolitica:82,empregos:90,capacidadeInvestimento:48,
+    id:'correios',logo:'/logos/companies/correios.webp',imagem:'/companies/correios.webp',contextoConcorrencia:'Concorre com operadores privados e plataformas logísticas; universalização pesa contra eficiência de mercado.',nome:'Correios',sigla:'ECT',setor:'Logística',eixo:'servicos',valorMercado:12000,lucroAnual:600,eficiencia:49,missaoPublica:94,governanca:61,exposicaoPolitica:82,empregos:90,capacidadeInvestimento:48,
     descricao:'Rede logística nacional com obrigação de universalização e capilaridade territorial.',tensao:'Universalização × modernização × custo trabalhista.',tags:['logistica','servico_publico','trabalho'],
     diretrizes:[
       {id:'ect_universal',nome:'Universalização total',texto:'Preservar rede ampla e reforçar atendimento em áreas deficitárias.',impactoFiscal:-650,missao:4,grupos:{periferia:2,sindicalistas:3,agro:1,mercado:-2}},
@@ -41,7 +41,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'bndes',nome:'BNDES',sigla:'BNDES',setor:'Desenvolvimento',eixo:'credito',valorMercado:210000,lucroAnual:18000,eficiencia:81,missaoPublica:88,governanca:87,exposicaoPolitica:74,empregos:39,capacidadeInvestimento:94,
+    id:'bndes',logo:'/logos/companies/bndes.webp',imagem:'/companies/bndes.webp',contextoConcorrencia:'Disputa espaço com mercado de capitais e bancos privados no financiamento de longo prazo; subsídios elevam vigilância do TCU.',nome:'BNDES',sigla:'BNDES',setor:'Desenvolvimento',eixo:'credito',valorMercado:210000,lucroAnual:18000,eficiencia:81,missaoPublica:88,governanca:87,exposicaoPolitica:74,empregos:39,capacidadeInvestimento:94,
     descricao:'Banco de desenvolvimento para infraestrutura, indústria, inovação e transição energética.',tensao:'Política industrial × subsídio implícito × adicionalidade econômica.',tags:['infraestrutura','industria','credito'],
     diretrizes:[
       {id:'bndes_industria',nome:'Nova industrialização',texto:'Priorizar cadeias estratégicas, máquinas, defesa e manufatura avançada.',impactoFiscal:-1300,missao:4,grupos:{mercado:2,sindicalistas:2,universitarios:2,agro:-1},crescimento:0.09},
@@ -50,7 +50,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'serpro',nome:'Serpro',sigla:'SERPRO',setor:'Tecnologia',eixo:'dados',valorMercado:18000,lucroAnual:2200,eficiencia:79,missaoPublica:87,governanca:84,exposicaoPolitica:63,empregos:52,capacidadeInvestimento:78,
+    id:'serpro',logo:'/logos/companies/serpro.webp',imagem:'/companies/serpro.webp',contextoConcorrencia:'Concorre com nuvens privadas e fornecedores estrangeiros em serviços críticos de governo e soberania de dados.',nome:'Serpro',sigla:'SERPRO',setor:'Tecnologia',eixo:'dados',valorMercado:18000,lucroAnual:2200,eficiencia:79,missaoPublica:87,governanca:84,exposicaoPolitica:63,empregos:52,capacidadeInvestimento:78,
     descricao:'Infraestrutura digital estatal para dados, identidade, serviços e sistemas críticos.',tensao:'Soberania digital × interoperabilidade × custo de modernização.',tags:['tecnologia','dados','soberania'],
     diretrizes:[
       {id:'serpro_nuvem',nome:'Nuvem soberana',texto:'Expandir infraestrutura nacional para dados críticos do Estado.',impactoFiscal:-650,missao:4,grupos:{universitarios:3,militares:2,mercado:1},crescimento:0.03},
@@ -59,7 +59,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'dataprev',nome:'Dataprev',sigla:'DATAPREV',setor:'Tecnologia social',eixo:'dados',valorMercado:9000,lucroAnual:1000,eficiencia:72,missaoPublica:92,governanca:78,exposicaoPolitica:57,empregos:45,capacidadeInvestimento:66,
+    id:'dataprev',logo:'/logos/companies/dataprev.webp',imagem:'/companies/dataprev.webp',contextoConcorrencia:'Concorre com provedores privados de tecnologia social, mas opera bases estratégicas e sensíveis do Estado.',nome:'Dataprev',sigla:'DATAPREV',setor:'Tecnologia social',eixo:'dados',valorMercado:9000,lucroAnual:1000,eficiencia:72,missaoPublica:92,governanca:78,exposicaoPolitica:57,empregos:45,capacidadeInvestimento:66,
     descricao:'Processa benefícios, vínculos trabalhistas e dados previdenciários críticos.',tensao:'Modernização × segurança de dados × inclusão digital.',tags:['dados','social','previdencia'],
     diretrizes:[
       {id:'data_fraude',nome:'Combate a fraude com IA',texto:'Cruzar bases e automatizar detecção de pagamentos irregulares.',impactoFiscal:-350,eficiencia:4,missao:2,grupos:{mercado:2,universitarios:2,periferia:-1}},
@@ -68,7 +68,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'infraero',nome:'Infraero',sigla:'INFRAERO',setor:'Infraestrutura',eixo:'servicos',valorMercado:14000,lucroAnual:300,eficiencia:57,missaoPublica:81,governanca:69,exposicaoPolitica:54,empregos:43,capacidadeInvestimento:61,
+    id:'infraero',logo:'/logos/companies/infraero.webp',imagem:'/companies/infraero.webp',contextoConcorrencia:'Concorre e coopera com concessionárias privadas; investimentos podem deslocar demanda e contratos aeroportuários.',nome:'Infraero',sigla:'INFRAERO',setor:'Infraestrutura',eixo:'servicos',valorMercado:14000,lucroAnual:300,eficiencia:57,missaoPublica:81,governanca:69,exposicaoPolitica:54,empregos:43,capacidadeInvestimento:61,
     descricao:'Opera e apoia infraestrutura aeroportuária e serviços associados.',tensao:'Aeroportos regionais × rentabilidade × integração territorial.',tags:['infraestrutura','aviacao','regional'],
     diretrizes:[
       {id:'infra_regional',nome:'Aviação regional',texto:'Investir em aeroportos de cidades médias e conexão amazônica.',impactoFiscal:-700,missao:4,grupos:{agro:2,periferia:1,mercado:1},crescimento:0.04},
@@ -77,7 +77,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'enbpar',nome:'ENBPar',sigla:'ENBPAR',setor:'Energia estratégica',eixo:'soberania',valorMercado:25000,lucroAnual:1200,eficiencia:58,missaoPublica:96,governanca:70,exposicaoPolitica:70,empregos:36,capacidadeInvestimento:73,
+    id:'enbpar',logo:'/logos/companies/enbpar.webp',imagem:'/companies/enbpar.webp',contextoConcorrencia:'Atua em energia estratégica e nuclear, área de alta barreira, soberania e competição tecnológica internacional.',nome:'ENBPar',sigla:'ENBPAR',setor:'Energia estratégica',eixo:'soberania',valorMercado:25000,lucroAnual:1200,eficiencia:58,missaoPublica:96,governanca:70,exposicaoPolitica:70,empregos:36,capacidadeInvestimento:73,
     descricao:'Concentra ativos estratégicos de energia nuclear e políticas públicas de energia.',tensao:'Segurança nuclear × custo fiscal × autonomia energética.',tags:['nuclear','energia','soberania'],
     diretrizes:[
       {id:'enb_nuclear',nome:'Acelerar programa nuclear',texto:'Reforçar cadeia nuclear, combustível e geração de base.',impactoFiscal:-1500,missao:4,grupos:{militares:4,mercado:1,universitarios:-1},crescimento:0.06},
@@ -86,7 +86,7 @@ export const estataisSeed = [
     ]
   },
   {
-    id:'ebc',nome:'Empresa Brasil de Comunicação',sigla:'EBC',setor:'Comunicação',eixo:'servicos',valorMercado:2500,lucroAnual:-300,eficiencia:51,missaoPublica:84,governanca:64,exposicaoPolitica:96,empregos:41,capacidadeInvestimento:45,
+    id:'ebc',logo:'/logos/companies/ebc.webp',imagem:'/companies/ebc.webp',contextoConcorrencia:'Disputa audiência e credibilidade com redes privadas, mantendo missão pública e alta exposição política.',nome:'Empresa Brasil de Comunicação',sigla:'EBC',setor:'Comunicação',eixo:'servicos',valorMercado:2500,lucroAnual:-300,eficiencia:51,missaoPublica:84,governanca:64,exposicaoPolitica:96,empregos:41,capacidadeInvestimento:45,
     descricao:'Comunicação pública federal em TV, rádio, agência e serviços institucionais.',tensao:'Comunicação pública × independência editorial × custo.',tags:['comunicacao','cultura','institucional'],
     diretrizes:[
       {id:'ebc_publica',nome:'Blindagem editorial',texto:'Reforçar mandato público, conselho editorial e transparência.',impactoFiscal:-250,governanca:4,missao:4,grupos:{universitarios:3,mercado:1,evangelicos:-1}},

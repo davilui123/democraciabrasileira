@@ -16,6 +16,8 @@ import {
   Scale,
   Factory,
   ClipboardList,
+  FolderOpen,
+  Gauge,
 } from 'lucide-react';
 import useGameStore from './store/useGameStore';
 import { Toaster, toast } from './components/sonner';
@@ -40,7 +42,9 @@ import StateCompanies from './components/StateCompanies';
 import GovernmentPrograms from './components/GovernmentPrograms';
 import Institutions from './components/Institutions';
 import FederalCrisisModal from './components/FederalCrisisModal';
+import PoliticalCapitalModal from './components/PoliticalCapitalModal';
 import { conquistaPorId } from './data/seed/conquistas.js';
+import { createCampaign } from './services/saveService.js';
 
 const navigation = [
   { section: 'Governo', id: 'gabinete', label: 'Gabinete', icon: LayoutDashboard },
@@ -160,6 +164,8 @@ function App() {
     faseEleitoral,
     economia,
     popularidade,
+    capitalPolitico,
+    governabilidade,
     proximoTurno,
     verificarConquistas,
     eventosRecentes,
@@ -168,7 +174,6 @@ function App() {
     isLoading,
     agendaPresidencial,
     carregarJogo,
-    limparSave,
     configurarPerfilPresidencial,
     perfilPresidencial, nomeacoes, partidos, estados, projetosEspeciais, eventosEstatais, stf, institucional, paises, geopolitica, estatais, gruposSociais,
   } = useGameStore();
@@ -177,6 +182,7 @@ function App() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [showAchievements, setShowAchievements] = useState(false);
   const [showNews, setShowNews] = useState(false);
+  const [showCapital, setShowCapital] = useState(false);
   const [showTurn, setShowTurn] = useState(false);
   const [selectedUF, setSelectedUF] = useState('SP');
 
@@ -243,20 +249,18 @@ function App() {
   }, [faseEleitoral, sessionStarted]);
 
   const iniciarNovoJogo = (perfil) => {
-    const existeSave = !!localStorage.getItem('democracia-brasileira:save:v15') || !!localStorage.getItem('democracia-brasileira:save:v14') || !!localStorage.getItem('democracia-brasileira:save:v13') || !!localStorage.getItem('democracia-brasileira:save:v12') || !!localStorage.getItem('democracia-brasileira:save:v11') || !!localStorage.getItem('democracia-brasileira:save:v10') || !!localStorage.getItem('democracia-brasileira:save:v9') || !!localStorage.getItem('democracia-brasileira:save:v8') || !!localStorage.getItem('democracia-brasileira:save:v7') || !!localStorage.getItem('democracia-brasileira:save:v6') || !!localStorage.getItem('democracia-brasileira:save:v5') || !!localStorage.getItem('democracia-brasileira:save:v4');
-    if (existeSave && !window.confirm('Iniciar um novo jogo apagará o save local atual. Continuar?')) return;
-    limparSave();
+    createCampaign(perfil || {});
     configurarPerfilPresidencial(perfil || {});
     setActiveTab('gabinete');
     setSessionStarted(true);
   };
 
-  const continuarJogo = () => {
-    if (carregarJogo()) {
+  const continuarJogo = (campaignId = null) => {
+    if (carregarJogo(campaignId)) {
       setActiveTab('gabinete');
       setSessionStarted(true);
     } else {
-      toast.error('Nenhum jogo salvo foi encontrado.');
+      toast.error('Não foi possível abrir esta campanha.');
     }
   };
 
@@ -315,6 +319,16 @@ function App() {
                 <p className="mt-1 text-right text-[9px] font-bold uppercase tracking-wider text-muted">Nacional</p>
               </div>
             </div>
+            <button type="button" onClick={() => setShowCapital(true)} className="mt-2 flex w-full items-center justify-between rounded-xl border border-warning/25 bg-warning/5 px-3 py-2.5 text-left transition hover:bg-warning/10">
+              <div>
+                <p className="ui-data-label">Capital político</p>
+                <p className="mt-0.5 text-lg font-black text-warning">{Math.round(capitalPolitico)} CP</p>
+              </div>
+              <div className="text-right">
+                <Gauge size={17} className="ml-auto text-warning"/>
+                <p className={`mt-1 text-[9px] font-black ${Number(governabilidade?.ultimoDelta||0)>0?'text-success':Number(governabilidade?.ultimoDelta||0)<0?'text-danger':'text-muted'}`}>{Number(governabilidade?.ultimoDelta||0)>0?'+':''}{Number(governabilidade?.ultimoDelta||0)} no mês</p>
+              </div>
+            </button>
           </div>
 
           <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
@@ -335,8 +349,9 @@ function App() {
               </div>
             ))}
 
-            <div className="border-t border-border pt-3">
+            <div className="border-t border-border pt-3 space-y-1">
               <SidebarItem icon={Trophy} label="Conquistas" active={false} onClick={() => setShowAchievements(true)} />
+              <SidebarItem icon={FolderOpen} label="Trocar campanha" active={false} onClick={() => window.location.reload()} />
             </div>
           </nav>
 
@@ -370,6 +385,11 @@ function App() {
                   <div className="mt-2"><AttentionDots agenda={agendaPresidencial} /></div>
                 </div>
 
+                <button type="button" onClick={() => setShowCapital(true)} className="hidden min-w-[116px] rounded-xl border border-warning/25 bg-warning/5 px-3 py-2 text-left transition hover:bg-warning/10 lg:block">
+                  <p className="ui-data-label">Capital político</p>
+                  <p className="mt-0.5 font-mono text-sm font-black text-warning">{Math.round(capitalPolitico)} CP</p>
+                </button>
+
                 <div className="hidden min-w-[130px] rounded-xl border border-border bg-card/65 px-3 py-2 md:block">
                   <p className="ui-data-label">Resultado primário</p>
                   <p className={`mt-0.5 font-mono text-sm font-black ${(economia?.resultadoPrimario || 0) >= 0 ? 'text-success' : 'text-danger'}`}>{formatMoney(economia?.resultadoPrimario || 0)}</p>
@@ -380,6 +400,15 @@ function App() {
                   <p className="mt-0.5 text-xs font-black text-text">{dataString}</p>
                   <p className="text-[9px] font-bold uppercase tracking-wider text-muted">Mandato {mandato}</p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  title="Trocar campanha"
+                  className="grid h-11 w-11 place-items-center rounded-xl border border-border bg-card/65 text-muted hover:text-text lg:hidden"
+                >
+                  <FolderOpen size={17} />
+                </button>
 
                 <button
                   type="button"
@@ -430,6 +459,7 @@ function App() {
 
           {showAchievements && <Achievements onClose={() => setShowAchievements(false)} />}
           {showNews && <NewsCenter onClose={() => setShowNews(false)} onNavigate={(tab) => { setActiveTab(tab); setShowNews(false); }} />}
+          {showCapital && <PoliticalCapitalModal onClose={() => setShowCapital(false)} />}
           <MinisterPhone />
           <FederalCrisisModal />
           {showTurn && <TurnTransitionModal onClose={() => setShowTurn(false)} />}

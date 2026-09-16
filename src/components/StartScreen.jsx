@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Landmark, Play, RotateCcw, CalendarDays, Gauge, BriefcaseBusiness, ScrollText, UserRound, Flag, Check, ArrowLeft, ArrowRight } from 'lucide-react';
-import { getSaveSummary } from '../services/saveService';
+import { Landmark, Play, RotateCcw, CalendarDays, Gauge, BriefcaseBusiness, ScrollText, UserRound, Flag, Check, ArrowLeft, ArrowRight, Trash2, FolderOpen } from 'lucide-react';
+import { getCampaignSummaries, deleteCampaign } from '../services/saveService';
 import { promessasPosseSeed, eixosPerfilSeed } from '../data/seed/perfilPresidencial.js';
 import GameIcon from './GameIcon';
 import PoliticalAvatar from './PoliticalAvatar';
@@ -70,11 +70,40 @@ function ProfileSteps({perfil,setPerfil,onBack,onSubmit}){
 }
 
 export default function StartScreen({onNewGame,onContinue}){
-  const save=useMemo(()=>getSaveSummary(),[]);
   const [mode,setMode]=useState('home');
+  const [refresh,setRefresh]=useState(0);
+  const campaigns=useMemo(()=>getCampaignSummaries(),[refresh,mode]);
   const [perfil,setPerfil]=useState({nome:'',nomePublico:'',partidoId:'esq',ufOrigem:'SP',eixos:{economia:'equilibrio',costumes:'moderado',seguranca:'equilibrio',ambiente:'equilibrio',exterior:'autonomia'},promessas:[]});
-  const savedDate=save?.savedAt?new Date(save.savedAt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):null;
   const submit=()=>{if(!perfil.nome.trim()||perfil.promessas.length!==3)return;onNewGame({...perfil,nomePublico:perfil.nomePublico.trim()||perfil.nome.trim().split(/\s+/)[0]});};
+  const removeCampaign=(campaign)=>{
+    if(!window.confirm(`Excluir definitivamente a campanha de ${campaign.presidente}?`))return;
+    deleteCampaign(campaign.campaignId);
+    setRefresh(v=>v+1);
+  };
   if(mode==='profile')return <ProfileSteps perfil={perfil} setPerfil={setPerfil} onBack={()=>setMode('home')} onSubmit={submit}/>;
-  return <div className="relative min-h-screen overflow-y-auto bg-bg text-text"><div className="pointer-events-none absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_68%_5%,rgba(23,128,106,.18),transparent_34rem),linear-gradient(rgba(255,255,255,.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.018)_1px,transparent_1px)] [background-size:auto,44px_44px,44px_44px]"/><main className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-5 py-10 md:px-8"><div className="grid w-full gap-10 lg:grid-cols-[1.05fr_.95fr] lg:items-center"><section><div className="mb-7 flex items-center gap-4"><GameIcon icon={Landmark} tone="success" size="lg"/><div><div className="ui-kicker text-warning">República Federativa do Brasil</div><div className="text-sm font-bold text-muted">Simulador presidencial</div></div></div><h1 className="max-w-3xl text-4xl font-black leading-[.98] tracking-[-.05em] md:text-6xl">O poder começa no Planalto.<br/><span className="text-success">Governar é outra coisa.</span></h1><p className="mt-6 max-w-2xl text-base leading-relaxed text-muted md:text-lg">Monte seu gabinete, enfrente o Congresso, administre crises e construa um governo que sobreviva às próprias escolhas.</p><div className="mt-8 flex flex-wrap gap-3"><button type="button" onClick={()=>setMode('profile')} className="ui-btn-primary min-h-12 px-6"><Play size={18}/> Novo jogo</button><button type="button" onClick={onContinue} disabled={!save} className="ui-btn-secondary min-h-12 px-6"><RotateCcw size={18}/> Continuar jogo</button></div><p className="mt-3 text-xs text-muted">Novo jogo começa pela criação do perfil presidencial e das promessas de posse.</p></section><section className="ui-surface overflow-hidden"><div className="border-b border-border bg-panel/70 px-5 py-4"><div className="ui-kicker">Arquivo presidencial</div><div className="mt-1 flex items-center justify-between gap-4"><h2 className="text-xl font-black">{save?'Jogo salvo':'Nenhuma campanha salva'}</h2>{save&&<span className="ui-chip border-success/25 bg-success/5 text-success">Disponível</span>}</div></div>{save?<div className="p-5"><div className="mb-3 flex items-center gap-3 rounded-xl border border-border bg-panel/45 p-3"><PoliticalAvatar name={save.presidente||'Presidente'} seed="presidente" imageKey="presidente" size={40}/><div className="min-w-0"><div className="flex items-center gap-2"><UserRound size={15} className="text-info"/><span className="truncate font-black">{save.presidente}</span></div></div></div><div className="grid grid-cols-2 gap-3"><Stat icon={CalendarDays} label="Data" value={save.dataString}/><Stat icon={Gauge} label="Aprovação" value={`${save.aprovacao}%`}/><Stat icon={BriefcaseBusiness} label="Ministros" value={`${save.nomeados} nomeados`}/><Stat icon={ScrollText} label="Leis" value={`${save.leis} aprovadas`}/></div><div className="mt-4 rounded-xl border border-border bg-panel/45 p-4 text-xs leading-relaxed text-muted">Mandato <b className="text-text">{save.mandato}</b> · turno {save.turno}<br/>Último salvamento: {savedDate}</div><button type="button" onClick={onContinue} className="ui-btn-primary mt-4 w-full justify-center">Retomar mandato</button></div>:<div className="p-8 text-center"><Landmark className="mx-auto text-muted/40" size={38}/><p className="mt-3 text-sm text-muted">Sua primeira campanha ainda não começou.</p></div>}</section></div></main></div>;
+  return <div className="relative min-h-screen overflow-y-auto bg-bg text-text">
+    <div className="pointer-events-none absolute inset-0 opacity-70 [background-image:radial-gradient(circle_at_68%_5%,rgba(23,128,106,.18),transparent_34rem),linear-gradient(rgba(255,255,255,.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.018)_1px,transparent_1px)] [background-size:auto,44px_44px,44px_44px]"/>
+    <main className="relative mx-auto flex min-h-screen w-full max-w-6xl items-center px-5 py-10 md:px-8">
+      <div className="grid w-full gap-10 lg:grid-cols-[.95fr_1.05fr] lg:items-center">
+        <section>
+          <div className="mb-7 flex items-center gap-4"><GameIcon icon={Landmark} tone="success" size="lg"/><div><div className="ui-kicker text-warning">República Federativa do Brasil</div><div className="text-sm font-bold text-muted">Simulador presidencial</div></div></div>
+          <h1 className="max-w-3xl text-4xl font-black leading-[.98] tracking-[-.05em] md:text-6xl">O poder começa no Planalto.<br/><span className="text-success">Governar é outra coisa.</span></h1>
+          <p className="mt-6 max-w-2xl text-base leading-relaxed text-muted md:text-lg">Monte seu gabinete, enfrente o Congresso, administre crises e construa governos diferentes sem apagar a campanha anterior.</p>
+          <div className="mt-8 flex flex-wrap gap-3"><button type="button" onClick={()=>setMode('profile')} className="ui-btn-primary min-h-12 px-6"><Play size={18}/> Nova campanha</button>{campaigns[0]&&<button type="button" onClick={()=>onContinue(campaigns[0].campaignId)} className="ui-btn-secondary min-h-12 px-6"><RotateCcw size={18}/> Continuar mais recente</button>}</div>
+          <p className="mt-3 text-xs text-muted">Cada campanha possui save próprio no navegador. Criar outra não substitui as anteriores.</p>
+        </section>
+
+        <section className="ui-surface overflow-hidden">
+          <div className="flex items-center justify-between border-b border-border bg-panel/70 px-5 py-4"><div><div className="ui-kicker">Arquivo presidencial</div><h2 className="mt-1 text-xl font-black">{campaigns.length?`${campaigns.length} campanha${campaigns.length>1?'s':''}`:'Nenhuma campanha salva'}</h2></div>{campaigns.length>0&&<span className="ui-chip border-success/25 bg-success/5 text-success"><FolderOpen size={13}/> Multi-save</span>}</div>
+          {campaigns.length?<div className="max-h-[530px] space-y-3 overflow-y-auto p-4">
+            {campaigns.map((save)=>{const savedDate=save?.savedAt?new Date(save.savedAt).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}):null;return <article key={save.campaignId} className={`rounded-2xl border p-4 ${save.active?'border-success/35 bg-success/5':'border-border bg-panel/35'}`}>
+              <div className="flex items-center gap-3"><PoliticalAvatar name={save.presidente||'Presidente'} seed={`presidente-${save.campaignId}`} imageKey="presidente" size={44}/><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><UserRound size={14} className="text-info"/><span className="truncate font-black">{save.presidente}</span>{save.active&&<span className="ui-chip py-0.5 text-[8px] text-success">Atual</span>}</div><div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-muted">{save.dataString} · turno {save.turno} · {save.mandato}</div></div><button type="button" title="Excluir campanha" onClick={()=>removeCampaign(save)} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border text-muted hover:border-danger/40 hover:text-danger"><Trash2 size={15}/></button></div>
+              <div className="mt-3 grid grid-cols-4 gap-2"><Stat icon={Gauge} label="Aprovação" value={`${save.aprovacao}%`}/><Stat icon={BriefcaseBusiness} label="Ministros" value={save.nomeados}/><Stat icon={ScrollText} label="Leis" value={save.leis}/><Stat icon={CalendarDays} label="Salvo" value={savedDate?.split(' ')[0]||'—'}/></div>
+              <button type="button" onClick={()=>onContinue(save.campaignId)} className="ui-btn-primary mt-3 w-full justify-center">Retomar este mandato <ArrowRight size={15}/></button>
+            </article>})}
+          </div>:<div className="p-8 text-center"><Landmark className="mx-auto text-muted/40" size={38}/><p className="mt-3 text-sm text-muted">Sua primeira campanha ainda não começou.</p><p className="mt-1 text-xs text-muted">Depois, este arquivo poderá guardar vários presidentes e linhas do tempo.</p></div>}
+        </section>
+      </div>
+    </main>
+  </div>;
 }
