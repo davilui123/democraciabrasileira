@@ -1,3 +1,4 @@
+import { gerarEmendasIniciais, gerarEmendaAdicional } from './amendmentEngine.js';
 const clamp = (value, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 
 export const CONGRESSO_INICIAL = {
@@ -24,8 +25,8 @@ export const ACOES_ARTICULACAO = [
   },
   {
     id: 'negociar_texto',
-    titulo: 'Negociar o texto',
-    descricao: 'Aceita emenda ou substitutivo para ampliar a maioria e reduzir resistência.',
+    titulo: 'Costurar relatoria',
+    descricao: 'Trabalha relator e lideranças antes da decisão sobre emendas. Melhora o ambiente, mas não altera o texto sozinho.',
     custoPoder: 4,
     custoCapital: 1,
     apoio: 6,
@@ -104,13 +105,28 @@ export const calcularProjecao = (proposta, lei, partidos) => {
   const bonusGeral = proposta?.apoioBonus || 0;
   const bonusPorPartido = proposta?.bonusPorPartido || {};
   const polarizacao = proposta?.polarizacaoAtual ?? lei.polarizacao ?? 40;
+  const origem = proposta?.origem || 'executivo';
+  const posicaoGoverno = proposta?.posicaoGoverno || (origem === 'executivo' ? 'autoria' : 'sem_posicao');
+  const sponsorParty = proposta?.autor?.partidoId || null;
 
   const bancadas = partidos.map((partido) => {
     const afinidade = lei.afinidade?.[partido.id] ?? 50;
     const governismo = partido.apoio ?? 50;
     const penalidadePolarizacao = polarizacao >= 75 && afinidade < 50 ? -8 : 0;
+    let base;
+    if (origem === 'executivo') {
+      base = afinidade * 0.62 + governismo * 0.38;
+    } else {
+      base = afinidade * 0.82 + 9;
+      if (posicaoGoverno === 'apoiar') base += 8 + (governismo - 50) * 0.28;
+      else if (posicaoGoverno === 'negociar') base += 4 + (governismo - 50) * 0.12;
+      else if (posicaoGoverno === 'opor') base -= 5 + Math.max(0, governismo - 45) * 0.25;
+      if (sponsorParty && sponsorParty === partido.id) base += 11;
+      if (origem === 'oposicao' && partido.id === 'dir') base += 10;
+      if (origem === 'governadores' && ['centro','ind'].includes(partido.id)) base += 4;
+    }
     const probabilidade = clamp(
-      afinidade * 0.62 + governismo * 0.38 + bonusGeral + (bonusPorPartido[partido.id] || 0) + penalidadePolarizacao,
+      base + bonusGeral + (bonusPorPartido[partido.id] || 0) + penalidadePolarizacao,
       4,
       97,
     );
@@ -142,17 +158,29 @@ const atorParaComissao = (comissaoId, atores) => {
     || null;
 };
 
-export const criarProposta = ({ lei, turno, atores, partidos }) => {
+export const criarProposta = ({ lei, turno, atores, partidos, origem = 'executivo', autor = null, patrocinadores = [], posicaoGoverno = null }) => {
   const primeiraComissao = lei.comissoes?.[0] || 'ccjc';
   const relator = atorParaComissao(primeiraComissao, atores);
+  const emendasIniciais = gerarEmendasIniciais({ lei, atores, turno, origemProjeto: origem });
+  const textoProtocolo = origem === 'executivo'
+    ? 'Mensagem presidencial protocolada na Câmara dos Deputados.'
+    : origem === 'oposicao'
+      ? `${autor?.nome || 'Liderança da oposição'} protocola projeto e tenta impor agenda própria ao governo.`
+      : origem === 'governadores'
+        ? `${autor?.nome || 'Governadores'} lidera articulação federativa e leva a proposta ao Congresso.`
+        : `${autor?.nome || 'Liderança parlamentar'} protocola iniciativa própria da Câmara.`;
   const proposta = {
-    id: `prop_${lei.id}_${turno}_${Date.now()}`,
+    id: `prop_${lei.id}_${turno}_${Date.now()}_${origem}`,
     leiId: lei.id,
     titulo: lei.titulo,
     descricao: lei.descricao,
     instrumento: lei.instrumento || 'PL',
     categoria: lei.categoria,
-    origem: 'executivo',
+    origem,
+    autor,
+    patrocinadores,
+    posicaoGoverno: origem === 'executivo' ? 'autoria' : (posicaoGoverno || 'sem_posicao'),
+    posicaoGovernoTurno: null,
     status: 'em_tramitacao',
     fase: 'comissao',
     comissaoIndex: 0,
@@ -164,9 +192,15 @@ export const criarProposta = ({ lei, turno, atores, partidos }) => {
     bonusPorPartido: {},
     polarizacaoAtual: lei.polarizacao ?? 40,
     urgencia: false,
-    emendas: [],
+    emendas: emendasIniciais,
+    versaoTexto: 1,
+    textoBase: 'Texto original',
+    alteracoesTexto: [],
+    riscosTexto: { ...(lei.riscosControle || {}) },
+    impactoFiscalEmendas: 0,
+    modificadoresEfeitos: {},
     eventos: [],
-    historico: [{ turno, tipo: 'protocolo', texto: 'Mensagem presidencial protocolada na Câmara dos Deputados.' }],
+    historico: [{ turno, tipo: 'protocolo', texto: textoProtocolo }],
     dataEnvioTurno: turno,
   };
   proposta.projecao = calcularProjecao(proposta, lei, partidos);
@@ -192,14 +226,44 @@ export const processarCongressoTurno = ({ votacoes, leis, partidos, atores, cong
   const eventosGlobais = [];
 
   const novasVotacoes = votacoes.map((original) => {
-    if (!['em_tramitacao', 'aguarda_segundo_turno', 'senado'].includes(original.status)) return original;
-    const proposta = { ...original, historico: [...(original.historico || [])], eventos: [...(original.eventos || [])] };
+    if (!['em_tramitacao', 'votacao_hoje', 'aguarda_segundo_turno', 'senado'].includes(original.status)) return original;
+    const proposta = { ...original, historico: [...(original.historico || [])], eventos: [...(original.eventos || [])], emendas: [...(original.emendas || [])], alteracoesTexto: [...(original.alteracoesTexto || [])] };
     const lei = leis.find((item) => item.id === proposta.leiId);
     if (!lei) return proposta;
+
+    // Projetos que não nasceram no Planalto não ficam congelados esperando o jogador abrir a votação.
+    // Depois de um mês na Ordem do Dia, a Câmara pode deliberar autonomamente.
+    if (proposta.status === 'votacao_hoje' && proposta.origem !== 'executivo' && (proposta.pautaDesdeTurno || 0) < turno) {
+      const resultado = simularVotacao({ proposta, lei, partidos });
+      proposta.ultimoResultado = resultado;
+      proposta.resultadoPendente = null;
+      if (resultado.aprovado) {
+        if (lei.instrumento === 'PEC' && (proposta.rodadaPlenario || 1) === 1) {
+          proposta.status = 'aguarda_segundo_turno';
+          proposta.fase = 'plenario';
+          proposta.rodadaPlenario = 2;
+          proposta.historico.unshift({ turno, tipo: 'votacao', texto: `1º turno aprovado autonomamente por ${resultado.sim} votos. Segundo turno será agendado.` });
+          eventosGlobais.push(`🏛️ ${proposta.titulo}: Câmara aprova o 1º turno sem depender da pauta do Planalto.`);
+        } else {
+          proposta.status = 'senado';
+          proposta.fase = 'senado';
+          proposta.historico.unshift({ turno, tipo: 'votacao', texto: `Câmara aprovou autonomamente por ${resultado.sim} votos favoráveis. Matéria segue ao Senado.` });
+          eventosGlobais.push(`🏛️ Câmara aprova agenda de ${proposta.origem}: ${proposta.titulo}.`);
+          congressoNovo.vitorias = (congressoNovo.vitorias || 0) + (proposta.posicaoGoverno === 'apoiar' ? 1 : 0);
+        }
+      } else {
+        proposta.status = 'arquivada';
+        proposta.fase = 'encerrada';
+        proposta.historico.unshift({ turno, tipo: 'votacao', texto: `Projeto rejeitado autonomamente: ${resultado.sim} a ${resultado.nao}.` });
+        eventosGlobais.push(`❌ Câmara rejeita ${proposta.titulo}, projeto de ${proposta.origem}.`);
+      }
+      return proposta;
+    }
 
     if (proposta.status === 'aguarda_segundo_turno') {
       proposta.status = 'votacao_hoje';
       proposta.fase = 'plenario';
+      proposta.pautaDesdeTurno = turno;
       proposta.historico.unshift({ turno, tipo: 'pauta', texto: 'Segundo turno incluído na Ordem do Dia.' });
       proposta.projecao = calcularProjecao(proposta, lei, partidos);
       return proposta;
@@ -220,7 +284,10 @@ export const processarCongressoTurno = ({ votacoes, leis, partidos, atores, cong
         proposta.comissaoAtual = lei.comissoes?.[proposta.comissaoIndex] || 'ccjc';
         proposta.turnosNaEtapa = 0;
         proposta.apoioBonus = (proposta.apoioBonus || 0) - 3;
-        proposta.historico.unshift({ turno, tipo: 'senado', texto: 'Senado alterou o texto. A matéria retorna à Câmara.' });
+        proposta.versaoTexto=(proposta.versaoTexto||1)+1;
+        proposta.textoBase='Texto revisado pelo Senado';
+        proposta.alteracoesTexto=[{turno,versao:proposta.versaoTexto,emendaId:`senado_${turno}`,titulo:'Alterações da Casa revisora',modo:'revisão do Senado',autor:'Senado Federal'},...(proposta.alteracoesTexto||[])];
+        proposta.historico.unshift({ turno, tipo: 'senado', texto: `Senado alterou o texto. A matéria retorna à Câmara na versão ${proposta.versaoTexto}.` });
         eventosGlobais.push(`↩️ ${proposta.titulo}: Senado devolveu o texto à Câmara com alterações.`);
       }
       return proposta;
@@ -237,6 +304,17 @@ export const processarCongressoTurno = ({ votacoes, leis, partidos, atores, cong
       proposta.eventos.unshift({ turno, ...evento });
       proposta.historico.unshift({ turno, tipo: 'evento', texto: `${evento.titulo}: ${evento.texto}` });
       eventosGlobais.push(`🗞️ ${proposta.titulo}: ${evento.titulo}.`);
+    }
+
+    // A negociação continua viva nas comissões: novas demandas podem surgir,
+    // mas com limite para não transformar cada projeto em uma lista infinita.
+    if (proposta.fase === 'comissao' && (proposta.emendas || []).length < 6 && Math.random() < 0.28) {
+      const novaEmenda = gerarEmendaAdicional({ lei, proposta, atores, turno });
+      if (novaEmenda) {
+        proposta.emendas = [...(proposta.emendas || []), novaEmenda];
+        proposta.historico.unshift({ turno, tipo: 'emenda', texto: `${novaEmenda.autor?.nome || 'Uma bancada'} apresenta emenda: ${novaEmenda.titulo}.` });
+        eventosGlobais.push(`📝 ${proposta.titulo}: nova emenda entra na negociação — ${novaEmenda.titulo}.`);
+      }
     }
 
     if (proposta.fase === 'comissao' && proposta.turnosNaEtapa >= (proposta.urgencia ? 1 : 2)) {
@@ -263,6 +341,7 @@ export const processarCongressoTurno = ({ votacoes, leis, partidos, atores, cong
         } else {
           proposta.status = 'votacao_hoje';
           proposta.fase = 'plenario';
+          proposta.pautaDesdeTurno = turno;
           proposta.turnosNaEtapa = 0;
           proposta.historico.unshift({ turno, tipo: 'pauta', texto: 'Projeto incluído na Ordem do Dia do Plenário.' });
           eventosGlobais.push(`🔔 ${proposta.titulo}: pronto para votação no Plenário.`);

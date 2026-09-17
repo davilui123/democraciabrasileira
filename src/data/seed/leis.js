@@ -1,3 +1,6 @@
+import { leisExpansao4961 } from './leisExpansao4961.js';
+import { enriquecerLeiLegislativa } from '../../game/legislativeCatalogEngine.js';
+
 // Catálogo legislativo fictício inspirado em temas reais do processo político brasileiro.
 // As propostas servem à simulação e não representam textos legislativos reais.
 
@@ -9,7 +12,7 @@ const criarLei = (config) => ({
   ...config,
 });
 
-export const leisSeed = [
+const leisBaseSeed = [
   criarLei({
     id: 'arcabouco_fiscal', titulo: 'Regra Fiscal de Estabilização', categoria: 'economia', instrumento: 'PLP',
     descricao: 'Cria limites plurianuais para expansão real da despesa e gatilhos de correção.',
@@ -636,6 +639,8 @@ export const leisSeed = [
   }),
 ];
 
+export const leisSeed = [...leisBaseSeed, ...leisExpansao4961].map(enriquecerLeiLegislativa);
+
 export const categoriasLeis = [
   { id: 'todas', nome: 'Todas' },
   { id: 'economia', nome: 'Economia e Desenvolvimento' },
@@ -654,7 +659,7 @@ export const categoriasLeis = [
 ];
 
 export const leisMetadata = {
-  totalLeis: 78,
+  totalLeis: leisSeed.length,
   distribuicaoPorCategoria: leisSeed.reduce((acc, lei) => ({ ...acc, [lei.categoria]: (acc[lei.categoria] || 0) + 1 }), {}),
   instrumentos: leisSeed.reduce((acc, lei) => ({ ...acc, [lei.instrumento]: (acc[lei.instrumento] || 0) + 1 }), {}),
   observacao: 'Catálogo fictício para simulação política; não reproduz proposições reais em tramitação.',

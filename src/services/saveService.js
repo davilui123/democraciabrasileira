@@ -20,7 +20,7 @@ const STATE_KEYS = [
   'historicoMinisterios', 'conflitosMinisteriais', 'oposicao', 'partidos', 'historico',
   'conquistasDesbloqueadas', 'capacidadesDesbloqueadas', 'recompensasEstruturaisAtivadas', 'eventosRecentes', 'promessasPoliticas', 'votacoes',
   'programas', 'leisDisponiveis', 'leisEmTramitacao', 'leisAprovadas', 'agendaPresidencial', 'cargos',
-  'congresso', 'atoresCongresso', 'comissoes',
+  'congresso', 'atoresCongresso', 'comissoes', 'agendaLegislativa',
   'ligacaoMinisterial', 'eventosMinisteriaisResolvidos', 'desafiosMinisteriaisResolvidos',
   'historicoRelacoesMinisteriais', 'historicoLigacoesMinisteriais', 'eventosNacionais',
   'gruposSociais', 'estados', 'estadoSelecionado', 'midias', 'redeSocial', 'projetosEspeciais',

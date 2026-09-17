@@ -85,6 +85,9 @@ export default function NewsCenter({ onClose, onNavigate }) {
     geopolitica = { pressoesDiplomaticas: [] },
     paises = [],
     responderPressaoDiplomatica,
+    votacoes = [],
+    leisDisponiveis = [],
+    definirPosicaoGovernoProjeto,
     politicalOrchestrator = { activeArcs: [], clusters: [], archive: [], priorityQueue: [] },
   } = useGameStore();
 
@@ -94,7 +97,8 @@ export default function NewsCenter({ onClose, onNavigate }) {
   const vagasCriticas = vagas.filter(c => c.prioridade === 'alta').length;
   const notificacoes = redeSocial.notificacoes || [];
   const pressoesDiplomaticas=(geopolitica.pressoesDiplomaticas||[]).filter(p=>p.status==='pendente');
-  const pendenciasCount = (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + pressoesDiplomaticas.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
+  const agendaAutonomaPendente=(votacoes||[]).filter(p=>p.origem&&p.origem!=='executivo'&&['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado'].includes(p.status)&&(!p.posicaoGoverno||p.posicaoGoverno==='sem_posicao'));
+  const pendenciasCount = (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + pressoesDiplomaticas.length + agendaAutonomaPendente.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
   const membrosAgrupados=new Set((politicalOrchestrator.clusters||[]).flatMap(c=>c.memberIds||[]));
   const enredosAtivos = [...(politicalOrchestrator.clusters||[]),...(politicalOrchestrator.activeArcs||[]).filter(a=>!membrosAgrupados.has(a.id))];
   const [tab, setTab] = useState('plantao');
@@ -121,6 +125,12 @@ export default function NewsCenter({ onClose, onNavigate }) {
     const result = responderPressaoDiplomatica?.(pressaoId, opcaoId);
     if (result?.ok) toast.success('Resposta diplomática registrada.');
     else toast.error(result?.motivo || 'Não foi possível responder à pressão externa.');
+  };
+
+  const responderAgendaLegislativa = (propostaId, posicao) => {
+    const result=definirPosicaoGovernoProjeto?.(propostaId,posicao);
+    if(result?.ok) toast.success('Posição do Planalto registrada.');
+    else toast.error(result?.motivo || 'Não foi possível registrar a posição do governo.');
   };
 
   return (
@@ -196,6 +206,19 @@ export default function NewsCenter({ onClose, onNavigate }) {
                   <p className="mt-2 text-sm leading-relaxed text-text/75">{pressao.texto}</p>
                   <div className="mt-4 grid gap-2 lg:grid-cols-3">{(pressao.opcoes||[]).map((op,index)=><button key={op.id} onClick={()=>responderPressao(pressao.id,op.id)} className="rounded-xl border border-border bg-card/65 p-3 text-left text-xs font-bold hover:border-info/40"><span className="mr-2 font-mono text-info">{String.fromCharCode(65+index)}</span>{op.titulo}<div className="mt-1 text-[10px] font-normal leading-relaxed text-muted">{op.descricao}</div></button>)}</div>
                   <button onClick={()=>go('mapa')} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black text-info">Abrir dossiê geopolítico <ArrowRight size={12}/></button>
+                </section>;
+              })}
+
+              {agendaAutonomaPendente.map(proposta=>{
+                const lei=leisDisponiveis.find(l=>l.id===proposta.leiId);
+                const origem=proposta.origem==='oposicao'?'Oposição':proposta.origem==='governadores'?'Governadores':'Congresso';
+                return <section key={proposta.id} className="rounded-2xl border border-violet-400/25 bg-violet-500/5 p-4">
+                  <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-violet-300"><Landmark size={14}/> Agenda própria · {origem}</div>
+                  <h4 className="mt-1 font-black">{proposta.titulo}</h4>
+                  <p className="mt-1 text-xs text-muted">{proposta.autor?.nome || origem}{proposta.patrocinadores?.length?` · ${proposta.patrocinadores.join(', ')}`:''} · {lei?.instrumento || proposta.instrumento}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-muted">A matéria seguirá tramitando mesmo sem iniciativa do Executivo. Defina como a base presidencial deve agir.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-4"><button onClick={()=>responderAgendaLegislativa(proposta.id,'apoiar')} className="ui-btn-secondary">Apoiar</button><button onClick={()=>responderAgendaLegislativa(proposta.id,'negociar')} className="ui-btn-secondary">Negociar</button><button onClick={()=>responderAgendaLegislativa(proposta.id,'liberar')} className="ui-btn-secondary">Liberar base</button><button onClick={()=>responderAgendaLegislativa(proposta.id,'opor')} className="ui-btn-secondary">Opor-se</button></div>
+                  <button onClick={()=>go('congresso')} className="mt-3 inline-flex items-center gap-1 text-[10px] font-black text-info">Abrir Congresso <ArrowRight size={12}/></button>
                 </section>;
               })}
 
@@ -281,7 +304,7 @@ export default function NewsCenter({ onClose, onNavigate }) {
               <div className="space-y-3">{notificacoes.map((notificacao, index) => {
                 const headline = cleanHeadline(notificacao.texto);
                 const media = mediaFor(headline, index + 13);
-                return <article key={notificacao.id || index} className="rounded-2xl border border-border bg-panel/42 p-4"><SourceStamp media={media} headline={headline} /><p className="mt-2 text-sm leading-relaxed text-text/85">{headline}</p><div className="mt-2 text-[9px] font-black uppercase text-muted">{notificacao.tipo || 'sistema político'}</div></article>;
+                return <article key={notificacao.id || index} className="rounded-2xl border border-border bg-panel/42 p-4"><SourceStamp media={media} headline={headline} /><p className="mt-2 text-sm leading-relaxed text-text/85">{headline}</p><div className="mt-2 flex items-center justify-between gap-3"><div className="text-[9px] font-black uppercase text-muted">{notificacao.tipo || 'sistema político'}</div>{notificacao.rota&&<button onClick={()=>go(notificacao.rota)} className="inline-flex items-center gap-1 text-[10px] font-black text-info">Abrir área <ArrowRight size={12}/></button>}</div></article>;
               })}{!notificacoes.length && <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted"><BellRing size={24} className="mx-auto mb-3" />Nenhuma notificação pendente.</div>}</div>
             </div>
           )}

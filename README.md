@@ -28,9 +28,12 @@ Simulador político em React/Vite no qual o jogador ocupa a Presidência da Rep�
 - **Fase 4.9.3:** Governabilidade & Efeito Dominó — Capital Político vira freio real de poder; repertório internacional/federativo/institucional cresce e decisões passam a gerar cadeias de consequências entre sistemas.
 - **Fase 4.9.4:** Orquestrador Político — histórias emergentes ganham prioridade, começo/meio/fim, escalada por silêncio, memória temporal, trilha causal e resolução persistente.
 - **Fase 4.9.5:** Comércio Estratégico, Concorrência & Regulação — itens estratégicos, dependências, preferências geopolíticas, concorrência empresarial, novas medidas econômicas, logos/ilustrações com fallback e supervisão TCU/STF.
+- **Fase 4.9.6.1:** Mega Catálogo Legislativo — 156 leis fictícias, cadeias pós-sanção, riscos STF/TCU/federativos, regulamentação futura, programas derivados e banco legislativo expandido.
+- **Fase 4.9.6.2:** Agenda Legislativa Autônoma — oposição, Congresso e governadores protocolam projetos próprios; o Planalto escolhe posição e matérias externas podem avançar e ser votadas sem autorização presidencial.
+- **Fase 4.9.6.3:** Emendas & Negociação do Texto — bancadas e comissões alteram projetos, o Planalto pode aceitar, contrapropor ou rejeitar demandas, versões do texto são persistidas e concessões modificam votos, custos e riscos do texto final.
 - **Fases 5–7:** expansão da gameplay, integração sistêmica, balanceamento e fechamento do ciclo completo de governo.
 
-Consulte `REFACTORACAO_FASE4_9_5.md` e `QA_FASE4_9_5.md` para a etapa atual.
+Consulte `REFACTORACAO_FASE4_9_6_3.md` e `QA_FASE4_9_6_3.md` para a etapa atual.
 
 ## Executar
 
