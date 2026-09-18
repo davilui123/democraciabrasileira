@@ -32,7 +32,7 @@ export default function Achievements({onClose}){
   const raw=(state.conquistasDesbloqueadas||[]).find(c=>(typeof c==='string'?c:c.id)===selected.id);
   const unlocked=!!raw;
   const reward=selected.recompensa||{};
-  const nuclearEmTramitacao=reward.id==='empresa_nuclear_avancada'&&(state.votacoes||[]).some(v=>v.leiId==='criacao_ebtn'&&!['arquivada','vetada','sancionada'].includes(v.status));
+  const nuclearEmTramitacao=reward.id==='empresa_nuclear_avancada'&&(state.votacoes||[]).some(v=>v.leiId==='criacao_ebtn'&&!['arquivada','vetada','sancionada','vetada_mantida','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado'].includes(v.status));
   const activated=reward.id&&(recompensasEstruturaisAtivadas.includes(reward.id)||reward.tipo==='capacidade'&&capacidadesDesbloqueadas.includes(reward.id));
   const total=conquistasSeed.length, done=(state.conquistasDesbloqueadas||[]).length;
   const deploy=()=>{const r=ativarRecompensaConquista(selected.id);r.ok?toast.success(`${reward.nome} implantado no governo.`):toast.error(r.motivo||'Não foi possível implantar a recompensa.');};

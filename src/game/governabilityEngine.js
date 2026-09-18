@@ -62,6 +62,14 @@ export function calcularVariacaoMensalCapital(state={}){
   if(oposicao>=70){delta-=1;motivos.push({delta:-1,texto:'oposição em alta capacidade de mobilização'});} 
   if((state.institucional?.tensaoInstitucional??0)>=65){delta-=1;motivos.push({delta:-1,texto:'tensão institucional elevada'});} 
 
+  const partidoPresidencial=(state.partidos||[]).find(p=>p.id===state.perfilPresidencial?.partidoId);
+  const relacaoPartido=Number(partidoPresidencial?.governoPartidario?.relacaoPresidente??55);
+  const cobrancasAbertas=(partidoPresidencial?.governoPartidario?.cobrancas||[]).filter(c=>['pendente','comprometida','negociada'].includes(c.status)).length;
+  if(relacaoPartido>=78){delta+=1;motivos.push({delta:1,texto:'partido presidencial alinhado e mobilizado'});} 
+  else if(relacaoPartido<32){delta-=2;motivos.push({delta:-2,texto:'ruptura crescente com a direção do próprio partido'});} 
+  else if(relacaoPartido<48){delta-=1;motivos.push({delta:-1,texto:'relação desgastada com o partido presidencial'});} 
+  if(cobrancasAbertas>=3){delta-=1;motivos.push({delta:-1,texto:'acúmulo de cobranças não resolvidas da legenda presidencial'});} 
+
   delta=Math.max(-6,Math.min(6,delta));
   return {delta,motivos,vagasCriticas};
 }

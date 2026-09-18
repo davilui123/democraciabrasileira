@@ -2,15 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { Landmark, Play, RotateCcw, CalendarDays, Gauge, BriefcaseBusiness, ScrollText, UserRound, Flag, Check, ArrowLeft, ArrowRight, Trash2, FolderOpen } from 'lucide-react';
 import { getCampaignSummaries, deleteCampaign } from '../services/saveService';
 import { promessasPosseSeed, eixosPerfilSeed } from '../data/seed/perfilPresidencial.js';
+import { partidosSeed } from '../data/seed/partidos.js';
 import GameIcon from './GameIcon';
 import PoliticalAvatar from './PoliticalAvatar';
 
-const PARTIES=[
-  {id:'esq',sigla:'PPG',nome:'Partido Progressista'},
-  {id:'centro',sigla:'MOC',nome:'Movimento Central'},
-  {id:'dir',sigla:'LIB',nome:'Liberais Unidos'},
-  {id:'ind',sigla:'IND',nome:'Independentes'},
-];
+const PARTIES=partidosSeed.map(({id,sigla,nome,ideologia})=>({id,sigla,nome,ideologia}));
 const UFS=['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
 const Stat=({icon:Icon,label,value})=><div className="rounded-xl border border-border bg-bg/45 px-3 py-3"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[.14em] text-muted"><Icon size={13}/>{label}</div><div className="mt-1 text-sm font-black text-text">{value}</div></div>;

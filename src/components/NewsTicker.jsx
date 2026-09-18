@@ -10,6 +10,7 @@ const NewsTicker = ({ onOpen }) => {
     nomeacoes = [],
     agendaCalendario = { convites: [] },
     stf,
+    controleLeis = { casosSTF: [], auditoriasTCU: [] },
     turno = 1,
   } = useGameStore();
   const noticias = eventosRecentes.length > 0
@@ -18,7 +19,8 @@ const NewsTicker = ({ onOpen }) => {
   const demandas = cargos.filter(c => c.demandaAtual).length;
   const convites = (agendaCalendario.convites || []).filter(c => c.status === 'pendente' && (c.prazoTurno ?? 999) >= turno).length;
   const vagas = cargos.filter(c => !nomeacoes.some(n => n.cargoId === c.id)).length;
-  const pendencias = (eventoFederativoAtivo ? 1 : 0) + demandas + convites + (stf?.indicacaoPendente ? 1 : 0) + (vagas ? 1 : 0);
+  const controles = (controleLeis.casosSTF||[]).filter(c=>c.status!=='julgado'&&!c.defesaApresentada).length + (controleLeis.auditoriasTCU||[]).filter(a=>a.status!=='decidida'&&!a.planoApresentado).length;
+  const pendencias = (eventoFederativoAtivo ? 1 : 0) + demandas + convites + controles + (stf?.indicacaoPendente ? 1 : 0) + (vagas ? 1 : 0);
 
   return (
     <div className="relative z-30 flex h-8 shrink-0 items-center overflow-hidden border-b border-border bg-ink text-xs text-muted">

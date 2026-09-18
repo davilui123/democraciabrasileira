@@ -18,6 +18,7 @@ import {
   ClipboardList,
   FolderOpen,
   Gauge,
+  Flag,
 } from 'lucide-react';
 import useGameStore from './store/useGameStore';
 import { Toaster, toast } from './components/sonner';
@@ -25,6 +26,7 @@ import { Toaster, toast } from './components/sonner';
 import Dashboard from './components/Dashboard';
 import Ministries from './components/Ministries';
 import Congress from './components/Congress';
+import Parties from './components/Parties';
 import Geopolitics from './components/Geopolitics';
 import Economy from './components/Economy';
 import NewsTicker from './components/NewsTicker';
@@ -50,6 +52,7 @@ const navigation = [
   { section: 'Governo', id: 'gabinete', label: 'Gabinete', icon: LayoutDashboard },
   { section: 'Governo', id: 'ministerios', label: 'Ministérios', icon: BriefcaseBusiness },
   { section: 'Política', id: 'congresso', label: 'Congresso Nacional', icon: UsersRound },
+  { section: 'Política', id: 'partidos', label: 'Partidos', icon: Flag },
   { section: 'Política', id: 'federacao', label: 'Brasil & Estados', icon: MapPinned },
   { section: 'Política', id: 'oposicao', label: 'Oposição', icon: UsersRound },
   { section: 'Estratégia', id: 'economia', label: 'Economia & Fazenda', icon: CircleDollarSign },
@@ -76,6 +79,11 @@ const tabMeta = {
     eyebrow: 'Praça dos Três Poderes',
     title: 'Congresso Nacional',
     description: 'Base parlamentar, negociações, tramitação e votações em plenário.',
+  },
+  partidos: {
+    eyebrow: 'Sistema Partidário',
+    title: 'Partidos & Máquinas Políticas',
+    description: 'Direção nacional, máquina, diretórios e a relação do partido presidencial com o governo.',
   },
   federacao: {
     eyebrow: 'Pacto Federativo',
@@ -439,11 +447,12 @@ function App() {
             </div>
           </header>
 
-          <div className={`min-h-0 flex-1 ${['gabinete','ministerios','federacao','oposicao','economia','estatais','programas','instituicoes','projetos','mapa'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+          <div className={`min-h-0 flex-1 ${['gabinete','ministerios','partidos','federacao','oposicao','economia','estatais','programas','instituicoes','projetos','mapa'].includes(activeTab) ? 'overflow-hidden' : 'overflow-y-auto'}`}>
             <div className="mx-auto h-full w-full max-w-[1520px] px-4 py-4 md:px-7 md:py-5 xl:px-9">
               {activeTab === 'gabinete' && <Dashboard onOpenState={(uf) => { setSelectedUF(uf); setActiveTab('federacao'); }} />}
               {activeTab === 'ministerios' && <Ministries />}
               {activeTab === 'congresso' && <Congress />}
+              {activeTab === 'partidos' && <Parties />}
               {activeTab === 'eleicoes' && <ElectionCenter />}
               {activeTab === 'federacao' && <Federation initialUF={selectedUF} />}
               {activeTab === 'oposicao' && <Institutions initialTab="oposicao" />}

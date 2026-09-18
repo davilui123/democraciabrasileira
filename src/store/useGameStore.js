@@ -11,6 +11,7 @@ import {
   aplicarAcaoArticulacao,
 } from '../game/congressEngine.js';
 import { deliberarEmenda, incorporarAjusteGoverno, consolidarTextoFinal } from '../game/amendmentEngine.js';
+import { gerarDispositivosVeto, resumirVetoParcial, calcularProjecaoDerrubadaVeto } from '../game/vetoEngine.js';
 import { desafiosDaPasta, eventosDaPasta, afinidadeComTags, avaliarMinistro, sortearLigacao, avaliarRespostaDesafio, clampMinister } from '../game/ministryEngine.js';
 import { desafiosMinisteriais } from '../data/seed/desafiosMinisteriais.js';
 import { eventosMinisteriais } from '../data/seed/eventosMinisteriais.js';
@@ -42,13 +43,19 @@ import { empresasVisitasSeed } from '../data/seed/empresasVisitas.js';
 import { COMERCIO_INICIAL, criarOportunidadeVisita, processarComercioMensal, ajustarTarifaSetorial, aplicarPreferenciaComercial, normalizarComercio } from '../game/tradeEngine.js';
 import { criarAgendaCalendarioInicial, criarConviteVisitaInternacional, criarConviteMidiaCalendario, criarConviteGovernadorCalendario, criarConviteEmpresarialCalendario, compromissosNoTurno, dataDoTurno, isoData } from '../game/agendaEngine.js';
 import { createPoliticalOrchestratorState, processPoliticalOrchestrator } from '../game/politicalOrchestratorEngine.js';
-import { criarEstadoEleitoralInicial, faseEleitoralPorData, diasParaPrimeiroTurno, processarMesEleitoral, atualizarPesquisaEleitoral as recalcularPesquisaEleitoral, prepararVicePool, escolherVice, aplicarOfertaConvencao, finalizarConvencao, mudarFiliacaoEleitoral, executarCaptacao, executarAcaoEleitoral, apoiarCorridaEstadual, resolverDebate, alterarPosicaoEleitoral, simularPrimeiroTurno, simularSegundoTurno, getParty } from '../game/electionEngine.js';
+import { criarEstadoEleitoralInicial, faseEleitoralPorData, diasParaPrimeiroTurno, processarMesEleitoral, atualizarPesquisaEleitoral as recalcularPesquisaEleitoral, prepararVicePool, escolherVice, aplicarOfertaConvencao, mudarFiliacaoEleitoral, executarCaptacao, executarAcaoEleitoral, apoiarCorridaEstadual, resolverDebate, alterarPosicaoEleitoral, simularPrimeiroTurno, simularSegundoTurno, getParty } from '../game/electionEngine.js';
+import { partidosSeed } from '../data/seed/partidos.js';
 import { createPoliticalAIState, syncPoliticalAI, addPoliticalMemory, processPoliticalAI } from '../game/politicalActorEngine.js';
 import { cutscenePorEvento, cutscenePorId } from '../data/seed/cutscenes.js';
 import { GOVERNABILIDADE_INICIAL, aplicarVariacaoMensalCapital, custoPoliticoEfetivo } from '../game/governabilityEngine.js';
 import { gerarCascataSistemica, registrarCascata } from '../game/systemicCascadeEngine.js';
 import { processInstitutionalAutonomy, aplicarEfeitosInstitucionais } from '../game/institutionalAutonomyEngine.js';
 import { AGENDA_LEGISLATIVA_INICIAL, criarIniciativaLegislativaAutonoma } from '../game/legislativeAgendaEngine.js';
+import { CONTROLE_LEIS_INICIAL, processarControleLegislativo, prepararDefesaSTF, prepararPlanoTCU } from '../game/legalControlEngine.js';
+import { REGULAMENTACAO_INICIAL, sincronizarRegulamentacoes, concluirRegulamentacao, processarRegulamentacaoMensal, simularRegulamentacao } from '../game/regulationEngine.js';
+import { LEGADO_LEGISLATIVO_INICIAL, processarLegadoLegislativoMensal, alternarBandeiraLegado, construirLegadoLegislativo } from '../game/legislativeLegacyEngine.js';
+import { hydratePartyDynamics, processPartyLife, processMinisterAffiliations, applyPartyAction, processPartyInGovernment, respondPartyGovernmentDemand, hydratePartySystem, processPartyRealignment, respondPartyAllianceProposal, intervenePartyDirectorate } from '../game/partyEngine.js';
+import { sincronizarPartidoEleitoral, ajustarDistribuicaoFundo, decidirCandidaturaEstadual, finalizarConvencaoPartidaria, aplicarEfeitoMaquinaEleitoral } from '../game/partyElectionEngine.js';
 
 // =================================================================================
 // 1. CONSTANTES GLOBAIS
@@ -186,6 +193,50 @@ const aplicarComercioDaPressao = (state, pressao, opcaoId='silencio') => {
   return comercio;
 };
 
+
+const aplicarEfeitosLeiPromulgada = (current, lei, proposta, fator = 1) => {
+  const efeitosNegociados = { ...(lei.efeitos || {}) };
+  Object.entries(proposta?.modificadoresEfeitos || {}).forEach(([chave, valor]) => {
+    efeitosNegociados[chave] = (efeitosNegociados[chave] || 0) + valor;
+  });
+  const efeitosEscalados = Object.fromEntries(Object.entries(efeitosNegociados).map(([k, v]) => [k, typeof v === 'number' ? v * fator : v]));
+  const efeitos = aplicarImpactos(current, efeitosEscalados, 1);
+
+  let impactoGrupos = impactosGruposPorTags(lei.tags || [], 0.75 * fator);
+  if (!Object.values(impactoGrupos).some((v) => v < 0)) {
+    const contrapeso = lei.categoria === 'tributacao' ? 'mercado' : lei.categoria === 'seguranca' ? 'universitarios' : lei.categoria === 'meio_ambiente' ? 'agro' : 'mercado';
+    impactoGrupos = { ...impactoGrupos, [contrapeso]: (impactoGrupos[contrapeso] || 0) - Math.max(0.4, ((lei.polarizacao || 30) / 35) * fator) };
+  }
+  const gruposSociais = aplicarImpactoGrupos(current.gruposSociais, impactoGrupos);
+  const estados = current.estados.map((e) => ({ ...e, aprovacao: calcularAprovacaoEstado(e, gruposSociais) }));
+
+  let economiaFinal = efeitos.economia;
+  if (proposta?.impactoFiscalEmendas) economiaFinal = registrarMovimentoFiscal(economiaFinal, proposta.impactoFiscalEmendas * fator, 'custeio');
+  let mundoFinal = efeitos.mundo;
+  let institucionalFinal = efeitos.institucional;
+  let estataisFinal = current.estatais;
+  let recompensasEstruturaisAtivadas = current.recompensasEstruturaisAtivadas || [];
+  if (lei.id === leiCriacaoEBTN.id && fator > 0 && !current.estatais.some(e => e.id === estatalNuclearAvancada.id)) {
+    economiaFinal = registrarMovimentoFiscal(economiaFinal, 6500 * fator, 'infraestrutura');
+    mundoFinal = { ...mundoFinal, softPowerBrasil: clamp((mundoFinal.softPowerBrasil || 50) + 4 * fator) };
+    institucionalFinal = { ...institucionalFinal, tensaoInstitucional: clamp((institucionalFinal.tensaoInstitucional || 10) + 2 * fator) };
+    estataisFinal = [...current.estatais, { ...estatalNuclearAvancada, criadaNoTurno: current.turno }];
+    recompensasEstruturaisAtivadas = [...new Set([...recompensasEstruturaisAtivadas, 'empresa_nuclear_avancada'])];
+  }
+
+  return {
+    ...efeitos,
+    economia: economiaFinal,
+    mundo: mundoFinal,
+    institucional: institucionalFinal,
+    estatais: estataisFinal,
+    recompensasEstruturaisAtivadas,
+    gruposSociais,
+    estados,
+    popularidade: { ...efeitos.popularidade, geral: clamp(aprovacaoNacional(gruposSociais)) },
+  };
+};
+
 const mergeActorCatalog = (catalog=[], saved=[]) => catalog.map(base => {
   const old=saved.find(item=>item.id===base.id)||{};
   return { ...old, ...base,
@@ -206,6 +257,24 @@ const mergeStateCatalog = (catalog=[], saved=[]) => catalog.map(base => {
       popularidade: oldGov.popularidade ?? base.governador.popularidade,
     },
   };
+});
+
+const mergePartyCatalog = (catalog=[], saved=[]) => catalog.map(base => {
+  const old=saved.find(item=>item.id===base.id)||{};
+  const oldDirs=old.diretorios||[];
+  const oldWings=old.alas||[];
+  const merged={ ...base, ...old,
+    // Identidade e regras pertencem ao catálogo; vida interna e máquina evoluem na campanha.
+    nome:base.nome, sigla:base.sigla, numero:base.numero, fundacao:base.fundacao, logo:base.logo,
+    corPrincipal:base.corPrincipal, corSecundaria:base.corSecundaria, historia:base.historia, identidade:base.identidade,
+    baseSocial:base.baseSocial, prioridades:base.prioridades, linhasVermelhas:base.linhasVermelhas,
+    presidencia:{...base.presidencia,...(old.presidencia||{})}, executivo:base.executivo, governanca:base.governanca,
+    alas:base.alas.map(ala=>({...ala,...(oldWings.find(a=>a.id===ala.id)||{}),nome:ala.nome,agenda:ala.agenda,risco:ala.risco})),
+    diretorios:base.diretorios.map(dir=>({...dir,...(oldDirs.find(d=>d.uf===dir.uf)||{}),alaDominante:(oldDirs.find(d=>d.uf===dir.uf)||{}).alaDominante||dir.alaDominante})),
+    cadeiras:old.cadeiras ?? base.cadeiras, apoio:old.apoio ?? base.apoio,
+    maquina:old.maquina ?? base.maquina, capilaridade:old.capilaridade ?? base.capilaridade, disciplina:old.disciplina ?? base.disciplina,
+  };
+  return hydratePartyDynamics(merged);
 });
 
 const mergeCourtCatalog = (catalog=[], saved=[]) => saved.length
@@ -445,52 +514,8 @@ const useGameStore = create((set, get) => ({
   // === DADOS POLÍTICOS ===
   oposicao: { ...oposicaoSeed, forca: 34, folego: 100, estrategiaAtual: null, historico: [] },
 
-  partidos: [
-    { 
-      id: 'esq', 
-      nome: 'Partido Progressista', 
-      sigla: 'PPG', 
-      cadeiras: 110, 
-      apoio: 80, 
-      cor: 'bg-red-600', 
-      lider: 'Dep. Silva', 
-      personalidade: 'Ideológico', 
-      dialogo: 'Precisamos focar no social, Presidente.' 
-    },
-    { 
-      id: 'centro', 
-      nome: 'Movimento Central', 
-      sigla: 'MOC', 
-      cadeiras: 220, 
-      apoio: 30, 
-      cor: 'bg-gray-500', 
-      lider: 'Dep. Cunha', 
-      personalidade: 'Pragmático', 
-      dialogo: 'A governabilidade tem seu preço...' 
-    },
-    { 
-      id: 'dir', 
-      nome: 'Liberais Unidos', 
-      sigla: 'LIB', 
-      cadeiras: 130, 
-      apoio: 10, 
-      cor: 'bg-blue-600', 
-      lider: 'Dep. Mendes', 
-      personalidade: 'Opositor', 
-      dialogo: 'O mercado não está feliz.' 
-    },
-    { 
-      id: 'ind', 
-      nome: 'Independentes', 
-      sigla: 'IND', 
-      cadeiras: 53, 
-      apoio: 50, 
-      cor: 'bg-yellow-500', 
-      lider: 'Dep. Alves', 
-      personalidade: 'Moderado', 
-      dialogo: 'Analisaremos caso a caso.' 
-    },
-  ],
+  partidos: partidosSeed.map(p=>hydratePartyDynamics({...p})),
+  sistemaPartidario: hydratePartySystem(),
 
   // === ARRAYS DE ESTADO ===
   historico: {
@@ -511,6 +536,9 @@ const useGameStore = create((set, get) => ({
   leisAprovadas: [],
   congresso: CONGRESSO_INICIAL,
   agendaLegislativa: { ...AGENDA_LEGISLATIVA_INICIAL },
+  controleLeis: { ...CONTROLE_LEIS_INICIAL },
+  regulamentacaoLeis: { ...REGULAMENTACAO_INICIAL },
+  legadoLegislativo: { ...LEGADO_LEGISLATIVO_INICIAL },
 
   // =================================================================================
   // 3. ACTIONS DE INICIALIZAÇÃO (ATUALIZADO)
@@ -641,6 +669,7 @@ const useGameStore = create((set, get) => ({
     const stf = { ...current.stf, ...(saved.stf || {}), corte: mergeCourtCatalog(current.stf.corte||[], saved.stf?.corte||[]) };
     const atoresCongresso = mergeActorCatalog(current.atoresCongresso||[], saved.atoresCongresso||[]);
     const estados = mergeStateCatalog(current.estados||[], saved.estados||[]);
+    const partidos = mergePartyCatalog(partidosSeed, saved.partidos||current.partidos||[]);
     const eleicao = saved.eleicao || criarEstadoEleitoralInicial({perfil:saved.perfilPresidencial||current.perfilPresidencial,estados});
     const oposicao = { ...oposicaoSeed, ...(saved.oposicao || {}), lider: oposicaoSeed.lider, nucleo: oposicaoSeed.nucleo, estrategias: oposicaoSeed.estrategias };
     const politicaEconomica = { ...POLITICA_ECONOMICA_INICIAL, ...(saved.politicaEconomica || {}), tributos: { ...POLITICA_ECONOMICA_INICIAL.tributos, ...(saved.politicaEconomica?.tributos || {}) }, dividaComposicao: { ...POLITICA_ECONOMICA_INICIAL.dividaComposicao, ...(saved.politicaEconomica?.dividaComposicao || {}) } };
@@ -652,7 +681,8 @@ const useGameStore = create((set, get) => ({
     const redeSocial={...current.redeSocial,...(saved.redeSocial||{}),posts:saved.redeSocial?.posts||current.redeSocial.posts,tendencias:saved.redeSocial?.tendencias||current.redeSocial.tendencias,notificacoes:saved.redeSocial?.notificacoes||[],interacoesPresidenciais:saved.redeSocial?.interacoesPresidenciais||[]};
     const midias=midiasSeed.map(base=>({...base,...((saved.midias||[]).find(m=>m.id===base.id)||{}),logo:base.logo,logosCanais:base.logosCanais}));
     const politicalAI=syncPoliticalAI(saved.politicalAI||createPoliticalAIState(),{...current,...saved,estados,nomeacoes,atoresCongresso});
-    set({ ...saved, politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL,...(saved.agendaLegislativa||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], cutscenesPendentes:saved.cutscenesPendentes||[], cutscenesVistas:saved.cutscenesVistas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), agendaCalendario:saved.agendaCalendario||current.agendaCalendario||criarAgendaCalendarioInicial(DATA_INICIO), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, oposicao, instituicoes: instituicoesSeed, candidatosSTF: candidatosSTFSeed, comunidadePulso: comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], eventosEstatais: saved.eventosEstatais || [], historicoEventosFederativos: saved.historicoEventosFederativos || [], eventoFederativoAtivo: saved.eventoFederativoAtivo || null, historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    set({ ...saved, partidos, sistemaPartidario:hydratePartySystem(saved.sistemaPartidario||{}), politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL,...(saved.agendaLegislativa||{})}, controleLeis:{...CONTROLE_LEIS_INICIAL,...(saved.controleLeis||{})}, regulamentacaoLeis:{...REGULAMENTACAO_INICIAL,...(saved.regulamentacaoLeis||{})}, legadoLegislativo:{...LEGADO_LEGISLATIVO_INICIAL,...(saved.legadoLegislativo||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], cutscenesPendentes:saved.cutscenesPendentes||[], cutscenesVistas:saved.cutscenesVistas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), agendaCalendario:saved.agendaCalendario||current.agendaCalendario||criarAgendaCalendarioInicial(DATA_INICIO), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, oposicao, instituicoes: instituicoesSeed, candidatosSTF: candidatosSTFSeed, comunidadePulso: comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], eventosEstatais: saved.eventosEstatais || [], historicoEventosFederativos: saved.historicoEventosFederativos || [], eventoFederativoAtivo: saved.eventoFederativoAtivo || null, historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    get().sincronizarRegulamentacoesLeis();
     return true;
   },
 
@@ -680,7 +710,7 @@ const useGameStore = create((set, get) => ({
     const posse={id:`posse_${Date.now()}`,autorId:'presidente',autor:nomePublico,handle,texto:`Assumo a Presidência com três compromissos centrais: ${promessas.map(p=>p.titulo).join(', ')}. O governo será cobrado por entrega, não por slogan.`,tema:'governo',alcance:6200000,turno:1};
     const oposicaoPost={id:`op_posse_${Date.now()}`,autorId:state.oposicao?.lider?.id||'oposicao',autor:state.oposicao?.lider?.nome||'Caio Valente',handle:'@CaioValente',grupo:'oposicao',texto:`Parabéns a ${nomePublico}. Nós estaremos aqui para lembrar cada promessa de campanha — especialmente ${promessas[0]?.titulo||'as que o novo governo preferir esquecer'}.`,tema:'oposicao',sentimento:-1,alcance:3100000,turno:1};
     const comunidade=gerarPostsComunidade({gruposSociais,turno:1,evento:'Posse',quantidade:4,respostaA:posse.id});
-    set({perfilPresidencial:perfilFinal,eleicao:eleicaoInicial,politicalAI:createPoliticalAIState(),politicalOrchestrator:createPoliticalOrchestratorState(),agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL},governabilidade:{...GOVERNABILIDADE_INICIAL},historicoCascatas:[],promessasPoliticas:promessas,gruposSociais,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},partidos,redeSocial:{...state.redeSocial,posts:[posse,oposicaoPost,...comunidade,...(state.redeSocial.posts||[])].slice(0,100),tendencias:['#Posse','#NovoGoverno',...promessas.map(p=>`#${p.id}`)],notificacoes:[{id:`not_posse_${Date.now()}`,texto:`${eleicaoInicial.viceAtual.nome} assume a Vice-Presidência. Seu perfil presidencial foi criado e a oposição já começou a cobrar promessas.`,tipo:'politica'}]}});
+    set({perfilPresidencial:perfilFinal,eleicao:eleicaoInicial,politicalAI:createPoliticalAIState(),politicalOrchestrator:createPoliticalOrchestratorState(),agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL},controleLeis:{...CONTROLE_LEIS_INICIAL},regulamentacaoLeis:{...REGULAMENTACAO_INICIAL},legadoLegislativo:{...LEGADO_LEGISLATIVO_INICIAL},governabilidade:{...GOVERNABILIDADE_INICIAL},historicoCascatas:[],promessasPoliticas:promessas,gruposSociais,popularidade:{...state.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},partidos,redeSocial:{...state.redeSocial,posts:[posse,oposicaoPost,...comunidade,...(state.redeSocial.posts||[])].slice(0,100),tendencias:['#Posse','#NovoGoverno',...promessas.map(p=>`#${p.id}`)],notificacoes:[{id:`not_posse_${Date.now()}`,texto:`${eleicaoInicial.viceAtual.nome} assume a Vice-Presidência. Seu perfil presidencial foi criado e a oposição já começou a cobrar promessas.`,tipo:'politica'}]}});
     saveGame(get()); return {ok:true,perfil:perfilFinal};
   },
 
@@ -709,7 +739,8 @@ const useGameStore = create((set, get) => ({
     const estados = mergeStateCatalog(current.estados||[], saved.estados||[]);
     const politicalAI=syncPoliticalAI(saved.politicalAI||createPoliticalAIState(),{...current,...saved,estados,nomeacoes,atoresCongresso});
     const eleicao = saved.eleicao || criarEstadoEleitoralInicial({perfil:saved.perfilPresidencial||current.perfilPresidencial,estados});
-    set({ ...saved, politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL,...(saved.agendaLegislativa||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, instituicoes:instituicoesSeed, candidatosSTF:candidatosSTFSeed, comunidadePulso:comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    set({ ...saved, partidos, sistemaPartidario:hydratePartySystem(saved.sistemaPartidario||{}), politicalAI, politicalOrchestrator:{...createPoliticalOrchestratorState(),...(saved.politicalOrchestrator||{})}, agendaLegislativa:{...AGENDA_LEGISLATIVA_INICIAL,...(saved.agendaLegislativa||{})}, controleLeis:{...CONTROLE_LEIS_INICIAL,...(saved.controleLeis||{})}, regulamentacaoLeis:{...REGULAMENTACAO_INICIAL,...(saved.regulamentacaoLeis||{})}, legadoLegislativo:{...LEGADO_LEGISLATIVO_INICIAL,...(saved.legadoLegislativo||{})}, governabilidade:{...GOVERNABILIDADE_INICIAL,...(saved.governabilidade||{})}, historicoCascatas:saved.historicoCascatas||[], economia, politicaEconomica, estatais, leisDisponiveis, redeSocial, midias, perfilPresidencial:saved.perfilPresidencial||current.perfilPresidencial, eleicao, empresasPrivadas:[...empresasPrivadasSeed,...((saved.empresasPrivadas||[]).filter(e=>!empresasPrivadasSeed.some(b=>b.id===e.id)))], modalidadesParceria:modalidadesParceriaSeed, parceriasEmpresariais:saved.parceriasEmpresariais||[], ultimaParceriaTurno:saved.ultimaParceriaTurno||null, consequenciasPendentes:saved.consequenciasPendentes||[], historicoConsequencias:saved.historicoConsequencias||[], comercioExterior:normalizarComercio(saved.comercioExterior||current.comercioExterior||COMERCIO_INICIAL), conquistasDesbloqueadas, capacidadesDesbloqueadas:saved.capacidadesDesbloqueadas||[], recompensasEstruturaisAtivadas:saved.recompensasEstruturaisAtivadas||[], cargos, nomeacoes, stf, atoresCongresso, estados, instituicoes:instituicoesSeed, candidatosSTF:candidatosSTFSeed, comunidadePulso:comunidadePulsoSeed, eventosNacionais: saved.eventosNacionais || [], historicoLigacoesMinisteriais: saved.historicoLigacoesMinisteriais || [], congresso: { ...CONGRESSO_INICIAL, ...(saved.congresso || {}) }, isLoading: false });
+    get().sincronizarRegulamentacoesLeis();
     saveGame(get());
     return true;
   },
@@ -1241,7 +1272,7 @@ const useGameStore = create((set, get) => ({
     const lei = state.leisDisponiveis.find(item => item.id === leiId);
     if (!lei) return { ok: false, motivo: 'Proposta não encontrada no catálogo.' };
     if (state.leisAprovadas.includes(leiId)) return { ok: false, motivo: 'Esta matéria já virou lei.' };
-    if (state.votacoes.some(v => v.leiId === leiId && !['arquivada', 'vetada', 'sancionada'].includes(v.status))) {
+    if (state.votacoes.some(v => v.leiId === leiId && !['arquivada','vetada','sancionada','vetada_mantida','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado'].includes(v.status))) {
       return { ok: false, motivo: 'Esta matéria já está em tramitação.' };
     }
 
@@ -1510,67 +1541,188 @@ const useGameStore = create((set, get) => ({
     return retorno;
   },
 
-  sancionarProjeto: (propostaId, sancionar = true) => {
+  decidirSancaoProjeto: (propostaId, decisao = 'integral', dispositivosIds = []) => {
     const state = get();
     const proposta = state.votacoes.find(v => v.id === propostaId);
     if (!proposta || proposta.status !== 'aguardando_sancao') return { ok: false, motivo: 'Projeto não está aguardando decisão presidencial.' };
     const lei = state.leisDisponiveis.find(item => item.id === proposta.leiId);
     if (!lei) return { ok: false, motivo: 'Lei não encontrada.' };
+    if (!['integral', 'parcial', 'total'].includes(decisao)) return { ok: false, motivo: 'Decisão de sanção inválida.' };
+
+    let resumoParcial = null;
+    if (decisao === 'parcial') {
+      if (!dispositivosIds?.length) return { ok: false, motivo: 'Selecione ao menos um dispositivo para o veto parcial.' };
+      resumoParcial = resumirVetoParcial(proposta, lei, dispositivosIds);
+      if (!resumoParcial.escolhidos.length) return { ok: false, motivo: 'Nenhum dispositivo válido foi selecionado.' };
+    }
 
     set(current => {
-      if (!sancionar) {
+      if (decisao === 'integral') {
+        const efeitos = aplicarEfeitosLeiPromulgada(current, lei, proposta, 1);
         return {
+          ...efeitos,
           votacoes: current.votacoes.map(v => v.id === propostaId ? {
-            ...v, status: 'vetada', fase: 'encerrada',
-            historico: [{ turno: current.turno, tipo: 'veto', texto: 'Presidente vetou integralmente o projeto.' }, ...(v.historico || [])],
+            ...v,
+            status: 'sancionada',
+            fase: 'encerrada',
+            textoFinal: consolidarTextoFinal(v, lei),
+            historico: [{ turno: current.turno, tipo: 'sancao', texto: `Projeto sancionado integralmente na versão ${v.versaoTexto || 1}.` }, ...(v.historico || [])],
           } : v),
+          leisAprovadas: [...new Set([...current.leisAprovadas, lei.id])],
           leisEmTramitacao: current.leisEmTramitacao.filter(id => id !== lei.id),
-          programas: lei.programaId ? (current.programas||[]).map(p=>p.id===lei.programaId?{...p,status:'vetado',atualizadoNoTurno:current.turno}:p) : current.programas,
-          eventosRecentes: [`🖋️ Veto presidencial: ${lei.titulo}.`, ...current.eventosRecentes].slice(0, 18),
+          congresso: { ...current.congresso, poder: clamp((current.congresso?.poder || 0) + 3) },
+          programas: lei.programaId ? (current.programas || []).map(p => p.id === lei.programaId
+            ? (p.provisoria
+              ? { ...p, status: 'ativo', provisoria: false, conversaoStatus: 'convertida', leiSancionadaNoTurno: current.turno, atualizadoNoTurno: current.turno }
+              : { ...p, status: 'implantacao', implantacaoRestante: 2, leiSancionadaNoTurno: current.turno, atualizadoNoTurno: current.turno })
+            : p) : current.programas,
+          eventosRecentes: [lei.id === leiCriacaoEBTN.id
+            ? '⚛️ Lei sancionada: nasce a Empresa Brasileira de Tecnologia Nuclear, com implantação fiscal e institucional imediata.'
+            : lei.programaId
+              ? `🇧🇷 Marco legal sancionado: ${lei.titulo}. O programa entra em implantação.`
+              : `🇧🇷 Lei sancionada integralmente: ${lei.titulo}.`, ...current.eventosRecentes].slice(0, 18),
         };
       }
 
-      const efeitosNegociados={...(lei.efeitos||{})};
-      Object.entries(proposta.modificadoresEfeitos||{}).forEach(([chave,valor])=>{efeitosNegociados[chave]=(efeitosNegociados[chave]||0)+valor;});
-      const efeitos = aplicarImpactos(current, efeitosNegociados, 1);
-      let impactoGrupos = impactosGruposPorTags(lei.tags || [], 0.75);
-      if (!Object.values(impactoGrupos).some((v)=>v<0)) {
-        const contrapeso = lei.categoria === 'tributacao' ? 'mercado' : lei.categoria === 'seguranca' ? 'universitarios' : lei.categoria === 'meio_ambiente' ? 'agro' : 'mercado';
-        impactoGrupos = {...impactoGrupos,[contrapeso]:(impactoGrupos[contrapeso]||0)-Math.max(1,(lei.polarizacao||30)/35)};
+      const vetoBase = {
+        tipo: decisao,
+        turno: current.turno,
+        defesaBonus: 0,
+        fatorRetido: decisao === 'parcial' ? resumoParcial.fatorRetido : 0,
+        pesoVetado: decisao === 'parcial' ? resumoParcial.pesoVetado : 100,
+        dispositivos: decisao === 'parcial' ? resumoParcial.escolhidos.map(d => ({ id: d.id, titulo: d.titulo, origem: d.origem, autor: d.autor || null, peso: d.peso })) : [],
+      };
+      const propostaComVeto = { ...proposta, vetoPresidencial: vetoBase };
+      vetoBase.projecaoInicial = calcularProjecaoDerrubadaVeto({ proposta: propostaComVeto, lei, partidos: current.partidos, congresso: current.congresso });
+      const textoFinal = {
+        ...consolidarTextoFinal(proposta, lei),
+        veto: { ...vetoBase, resultado: 'aguardando_congresso' },
+        vigencia: decisao === 'parcial' ? 'parcial' : 'suspensa',
+      };
+
+      if (decisao === 'parcial') {
+        const efeitos = aplicarEfeitosLeiPromulgada(current, lei, proposta, resumoParcial.fatorRetido);
+        return {
+          ...efeitos,
+          capitalPolitico: clamp((efeitos.capitalPolitico ?? current.capitalPolitico) - 1),
+          votacoes: current.votacoes.map(v => v.id === propostaId ? {
+            ...v,
+            status: 'veto_congresso', fase: 'veto', vetoPresidencial: vetoBase, textoFinal,
+            historico: [{ turno: current.turno, tipo: 'veto_parcial', texto: `Presidente sanciona o núcleo da matéria e veta ${resumoParcial.escolhidos.length} dispositivo(s), equivalentes a ${Math.round(resumoParcial.pesoVetado)}% do impacto do texto.` }, ...(v.historico || [])],
+          } : v),
+          leisAprovadas: [...new Set([...current.leisAprovadas, lei.id])],
+          leisEmTramitacao: [...new Set([...current.leisEmTramitacao, lei.id])],
+          programas: lei.programaId ? (current.programas || []).map(p => p.id === lei.programaId ? { ...p, status: 'implantacao', implantacaoRestante: 3, vetoPendente: true, atualizadoNoTurno: current.turno } : p) : current.programas,
+          eventosRecentes: [`✂️ Veto parcial: ${lei.titulo}. O texto entra em vigor sem os dispositivos vetados, que serão analisados pelo Congresso.`, ...current.eventosRecentes].slice(0, 18),
+        };
       }
-      const gruposSociais = aplicarImpactoGrupos(current.gruposSociais, impactoGrupos);
-      const estados = current.estados.map((e)=>({...e,aprovacao:calcularAprovacaoEstado(e,gruposSociais)}));
-      let economiaFinal=efeitos.economia;
-      if(proposta.impactoFiscalEmendas) economiaFinal=registrarMovimentoFiscal(economiaFinal,proposta.impactoFiscalEmendas,'custeio');
-      let mundoFinal=efeitos.mundo;
-      let institucionalFinal=efeitos.institucional;
-      let estataisFinal=current.estatais;
-      let recompensasEstruturaisAtivadas=current.recompensasEstruturaisAtivadas||[];
-      if(lei.id===leiCriacaoEBTN.id&&!current.estatais.some(e=>e.id===estatalNuclearAvancada.id)){
-        economiaFinal=registrarMovimentoFiscal(economiaFinal,6500,'infraestrutura');
-        mundoFinal={...mundoFinal,softPowerBrasil:clamp((mundoFinal.softPowerBrasil||50)+4)};
-        institucionalFinal={...institucionalFinal,tensaoInstitucional:clamp((institucionalFinal.tensaoInstitucional||10)+2)};
-        estataisFinal=[...current.estatais,{...estatalNuclearAvancada,criadaNoTurno:current.turno}];
-        recompensasEstruturaisAtivadas=[...new Set([...recompensasEstruturaisAtivadas,'empresa_nuclear_avancada'])];
-      }
+
       return {
-        ...efeitos,
-        economia:economiaFinal,mundo:mundoFinal,institucional:institucionalFinal,estatais:estataisFinal,recompensasEstruturaisAtivadas,
-        gruposSociais, estados,
-        popularidade:{...efeitos.popularidade,geral:clamp(aprovacaoNacional(gruposSociais))},
+        capitalPolitico: clamp(current.capitalPolitico - 2),
         votacoes: current.votacoes.map(v => v.id === propostaId ? {
-          ...v, status: 'sancionada', fase: 'encerrada', textoFinal:consolidarTextoFinal(v,lei),
-          historico: [{ turno: current.turno, tipo: 'sancao', texto: `Projeto sancionado na versão ${v.versaoTexto||1}${(v.alteracoesTexto||[]).length?` com ${(v.alteracoesTexto||[]).length} alteração(ões) negociada(s)`:''}.` }, ...(v.historico || [])],
+          ...v,
+          status: 'veto_congresso', fase: 'veto', vetoPresidencial: vetoBase, textoFinal,
+          historico: [{ turno: current.turno, tipo: 'veto_total', texto: 'Presidente veta integralmente o projeto. O veto segue para análise do Congresso.' }, ...(v.historico || [])],
         } : v),
-        leisAprovadas: [...new Set([...current.leisAprovadas, lei.id])],
-        leisEmTramitacao: current.leisEmTramitacao.filter(id => id !== lei.id),
-        congresso: { ...current.congresso, poder: clamp((current.congresso?.poder || 0) + 3) },
-        programas: lei.programaId ? (current.programas||[]).map(p=>p.id===lei.programaId?(p.provisoria?{...p,status:'ativo',provisoria:false,conversaoStatus:'convertida',leiSancionadaNoTurno:current.turno,atualizadoNoTurno:current.turno}:{...p,status:'implantacao',implantacaoRestante:2,leiSancionadaNoTurno:current.turno,atualizadoNoTurno:current.turno}):p) : current.programas,
-        eventosRecentes: [lei.id===leiCriacaoEBTN.id?'⚛️ Lei sancionada: nasce a Empresa Brasileira de Tecnologia Nuclear, com implantação fiscal e institucional imediata.':lei.programaId?`🇧🇷 Marco legal sancionado: ${lei.titulo}. O programa entra em implantação.`:`🇧🇷 Lei sancionada: ${lei.titulo}.`, ...current.eventosRecentes].slice(0, 18),
+        congresso: { ...current.congresso, poder: clamp((current.congresso?.poder || 0) - 2) },
+        leisEmTramitacao: [...new Set([...current.leisEmTramitacao, lei.id])],
+        programas: lei.programaId ? (current.programas || []).map(p => p.id === lei.programaId ? { ...p, status: 'veto_congresso', atualizadoNoTurno: current.turno } : p) : current.programas,
+        eventosRecentes: [`🛑 Veto total: ${lei.titulo}. O Congresso poderá manter ou derrubar a decisão presidencial.`, ...current.eventosRecentes].slice(0, 18),
       };
     });
+    get().sincronizarRegulamentacoesLeis();
     saveGame(get());
-    return { ok: true, sancionada: sancionar };
+    return { ok: true, decisao, parcial: resumoParcial };
+  },
+
+  // Compatibilidade com telas e saves da 4.9.6.3: true = sanção integral; false = veto total.
+  sancionarProjeto: (propostaId, sancionar = true) => get().decidirSancaoProjeto(propostaId, sancionar ? 'integral' : 'total'),
+
+  articularManutencaoVeto: (propostaId) => {
+    const state = get();
+    const proposta = state.votacoes.find(v => v.id === propostaId);
+    if (!proposta || proposta.status !== 'veto_congresso') return { ok: false, motivo: 'Não há veto em análise para esta matéria.' };
+    const custoCapital = 3;
+    const custoPoder = 5;
+    if (state.capitalPolitico < custoCapital) return { ok: false, motivo: `São necessários ${custoCapital} pontos de capital político.` };
+    if ((state.congresso?.poder || 0) < custoPoder) return { ok: false, motivo: `São necessários ${custoPoder} pontos de poder de bastidor.` };
+    set(current => ({
+      capitalPolitico: clamp(current.capitalPolitico - custoCapital),
+      congresso: { ...current.congresso, poder: clamp((current.congresso?.poder || 0) - custoPoder) },
+      votacoes: current.votacoes.map(v => v.id === propostaId ? {
+        ...v,
+        vetoPresidencial: { ...v.vetoPresidencial, defesaBonus: clamp((v.vetoPresidencial?.defesaBonus || 0) + 12, 0, 36) },
+        historico: [{ turno: current.turno, tipo: 'defesa_veto', texto: 'Casa Civil mobiliza a base para sustentar o veto presidencial na sessão conjunta.' }, ...(v.historico || [])],
+      } : v),
+      eventosRecentes: [`🛡️ Planalto articula manutenção do veto a ${proposta.titulo}.`, ...current.eventosRecentes].slice(0, 18),
+    }));
+    saveGame(get());
+    return { ok: true, custoCapital, custoPoder };
+  },
+
+  aplicarResultadosVetosCongresso: () => {
+    const state = get();
+    const resolvidos = (state.votacoes || []).filter(v => ['veto_derrubado', 'veto_mantido'].includes(v.status) && !v.resolucaoVetoAplicada);
+    if (!resolvidos.length) return { ok: true, resolvidos: 0 };
+    set(current => {
+      let working = { ...current };
+      let leisAprovadas = [...(current.leisAprovadas || [])];
+      let programas = [...(current.programas || [])];
+      let eventos = [];
+      const updates = new Map();
+
+      resolvidos.forEach(vetoResolvido => {
+        const lei = current.leisDisponiveis.find(l => l.id === vetoResolvido.leiId);
+        if (!lei) return;
+        const veto = vetoResolvido.vetoPresidencial || { tipo: 'total', fatorRetido: 0 };
+        const derrubado = vetoResolvido.status === 'veto_derrubado';
+        if (derrubado) {
+          const fatorRestante = veto.tipo === 'parcial' ? Math.max(0, 1 - (veto.fatorRetido || 0)) : 1;
+          if (fatorRestante > 0) working = { ...working, ...aplicarEfeitosLeiPromulgada(working, lei, vetoResolvido, fatorRestante) };
+          leisAprovadas = [...new Set([...leisAprovadas, lei.id])];
+          if (lei.programaId) programas = programas.map(p => p.id === lei.programaId
+            ? (p.provisoria
+              ? { ...p, status: 'ativo', provisoria: false, conversaoStatus: 'convertida', vetoPendente: false, leiSancionadaNoTurno: current.turno, atualizadoNoTurno: current.turno }
+              : { ...p, status: 'implantacao', implantacaoRestante: Math.min(p.implantacaoRestante || 2, 2), vetoPendente: false, leiSancionadaNoTurno: current.turno, atualizadoNoTurno: current.turno })
+            : p);
+          updates.set(vetoResolvido.id, {
+            status: veto.tipo === 'parcial' ? 'sancionada_veto_derrubado' : 'promulgada_veto_derrubado',
+            fase: 'encerrada', resolucaoVetoAplicada: true,
+            textoFinal: { ...(vetoResolvido.textoFinal || consolidarTextoFinal(vetoResolvido, lei)), veto: { ...veto, resultado: 'derrubado' }, vigencia: 'integral' },
+          });
+          eventos.push(`⚡ Veto derrubado: ${lei.titulo}. O texto integral passa a produzir efeitos.`);
+        } else {
+          if (veto.tipo === 'total') {
+            leisAprovadas = leisAprovadas.filter(id => id !== lei.id);
+            if (lei.programaId) programas = programas.map(p => p.id === lei.programaId ? { ...p, status: 'vetado', provisoria: false, vetoPendente: false, atualizadoNoTurno: current.turno } : p);
+          } else if (lei.programaId) {
+            programas = programas.map(p => p.id === lei.programaId ? { ...p, vetoPendente: false, atualizadoNoTurno: current.turno } : p);
+          }
+          updates.set(vetoResolvido.id, {
+            status: veto.tipo === 'parcial' ? 'sancionada_veto_mantido' : 'vetada_mantida',
+            fase: 'encerrada', resolucaoVetoAplicada: true,
+            textoFinal: { ...(vetoResolvido.textoFinal || consolidarTextoFinal(vetoResolvido, lei)), veto: { ...veto, resultado: 'mantido' }, vigencia: veto.tipo === 'parcial' ? 'parcial' : 'sem_vigencia' },
+          });
+          eventos.push(veto.tipo === 'parcial'
+            ? `🛡️ Veto parcial mantido: ${lei.titulo} segue vigente sem os dispositivos retirados.`
+            : `🛡️ Veto total mantido: ${lei.titulo} não entra em vigor.`);
+        }
+      });
+
+      const votacoes = working.votacoes.map(v => updates.has(v.id) ? { ...v, ...updates.get(v.id) } : v);
+      const ativos = new Set(votacoes.filter(v => ['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado','aguardando_sancao','veto_congresso'].includes(v.status)).map(v => v.leiId));
+      return {
+        ...working,
+        votacoes,
+        leisAprovadas,
+        leisEmTramitacao: [...ativos],
+        programas,
+        eventosRecentes: [...eventos, ...(working.eventosRecentes || [])].slice(0, 18),
+      };
+    });
+    get().sincronizarRegulamentacoesLeis();
+    saveGame(get());
+    return { ok: true, resolvidos: resolvidos.length };
   },
 
   processarTurnoCongresso: () => {
@@ -1612,7 +1764,7 @@ const useGameStore = create((set, get) => ({
       notificacao={id:`agenda_leg_${proposta.id}`,tipo:'congresso',rota:'congresso',propostaId:proposta.id,turno:turnoAlvo,texto:`${origemTexto} abre agenda própria: ${iniciativa.lei.titulo}. O Planalto precisa decidir se apoia, negocia, libera a base ou se opõe.`};
     }
 
-    const ativosIds=new Set(votacoesFinais.filter(v=>['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado','aguardando_sancao'].includes(v.status)).map(v=>v.leiId));
+    const ativosIds=new Set(votacoesFinais.filter(v=>['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado','aguardando_sancao','veto_congresso'].includes(v.status)).map(v=>v.leiId));
     set(current => ({
       votacoes: votacoesFinais,
       congresso: resultado.congresso,
@@ -1624,12 +1776,77 @@ const useGameStore = create((set, get) => ({
         if(!v)return programa;
         if(v.status==='arquivada')return {...programa,status:'rejeitado',provisoria:false,atualizadoNoTurno:current.turno};
         if(v.status==='aguardando_sancao')return programa.provisoria?{...programa,conversaoStatus:'aguardando_sancao',atualizadoNoTurno:current.turno}:{...programa,status:'aguardando_sancao',atualizadoNoTurno:current.turno};
+        if(v.status==='veto_congresso')return {...programa,status:programa.status==='implantacao'?'implantacao':'veto_congresso',vetoPendente:true,atualizadoNoTurno:current.turno};
         if(['em_tramitacao','senado','aguarda_segundo_turno','votacao_hoje'].includes(v.status))return programa.provisoria?{...programa,conversaoStatus:v.status,atualizadoNoTurno:current.turno}:{...programa,status:'aguardando_congresso',atualizadoNoTurno:current.turno};
         return programa;
       }),
       redeSocial:notificacao?{...current.redeSocial,notificacoes:[notificacao,...(current.redeSocial?.notificacoes||[])].slice(0,50)}:current.redeSocial,
       eventosRecentes: [...eventos, ...current.eventosRecentes].slice(0, 18),
     }));
+    get().aplicarResultadosVetosCongresso();
+  },
+
+  // =================================================================================
+  // FASE 4.9.6.6 — REGULAMENTAÇÃO & IMPLEMENTAÇÃO
+  // =================================================================================
+  sincronizarRegulamentacoesLeis: () => {
+    const state=get();
+    const resultado=sincronizarRegulamentacoes({regulamentacao:state.regulamentacaoLeis||REGULAMENTACAO_INICIAL,votacoes:state.votacoes,leis:state.leisDisponiveis,turno:state.turno});
+    if(!resultado.novos.length)return {ok:true,novos:[]};
+    set(current=>({
+      regulamentacaoLeis:resultado.regulamentacao,
+      redeSocial:{...current.redeSocial,notificacoes:[...resultado.novos.map(p=>({id:`reg_not_${p.id}`,tipo:'regulamentacao',rota:'programas',turno:current.turno,texto:`${p.tituloLei} entrou na fila de regulamentação. Defina desenho, território e modelo de execução.`})),...(current.redeSocial?.notificacoes||[])].slice(0,50)},
+      eventosRecentes:[...resultado.novos.map(p=>`📘 ${p.tituloLei} agora exige regulamentação para sair do papel.`),...current.eventosRecentes].slice(0,18),
+      programas:(current.programas||[]).map(programa=>{const proc=resultado.novos.find(p=>current.leisDisponiveis.find(l=>l.id===p.leiId)?.programaId===programa.id);return proc&&programa.status==='implantacao'?{...programa,status:'regulamentacao',regulamentacaoId:proc.id,atualizadoNoTurno:current.turno}:programa;}),
+    }));
+    return {ok:true,novos:resultado.novos};
+  },
+
+  simularRegulamentacaoLei: (processoId,config={}) => {
+    const state=get();
+    const processo=(state.regulamentacaoLeis?.processos||[]).find(p=>p.id===processoId);
+    if(!processo)return null;
+    const lei=(state.leisDisponiveis||[]).find(l=>l.id===processo.leiId);
+    if(!lei)return null;
+    return simularRegulamentacao({processo,lei,config,state});
+  },
+
+  regulamentarLei: (processoId,config={}) => {
+    const state=get();
+    const processo=(state.regulamentacaoLeis?.processos||[]).find(p=>p.id===processoId);
+    if(!processo)return {ok:false,motivo:'Processo de regulamentação não encontrado.'};
+    const lei=(state.leisDisponiveis||[]).find(l=>l.id===processo.leiId);
+    if(!lei)return {ok:false,motivo:'Lei não encontrada no catálogo.'};
+    const resultado=concluirRegulamentacao({regulamentacao:state.regulamentacaoLeis,processoId,lei,config,state});
+    if(!resultado.ok)return resultado;
+    set(current=>{
+      const existenteId=lei.programaId;
+      let programas=[...(current.programas||[])];
+      if(existenteId&&programas.some(p=>p.id===existenteId)){
+        programas=programas.map(p=>p.id===existenteId?{...p,...resultado.programa,id:p.id,nome:p.nome,templateId:p.templateId,status:'implantacao',implantacaoRestante:resultado.programa.implantacaoRestante,regulamentacaoId:processoId,leiOrigemId:lei.id,atualizadoNoTurno:current.turno}:p);
+        resultado.regulamentacao.processos=resultado.regulamentacao.processos.map(p=>p.id===processoId?{...p,programaId:existenteId}:p);
+      }else if(!programas.some(p=>p.id===resultado.programa.id)){
+        programas=[resultado.programa,...programas];
+      }
+      return {
+        regulamentacaoLeis:resultado.regulamentacao,programas,capitalPolitico:clamp(current.capitalPolitico-(resultado.custoCapital||0)),
+        eventosRecentes:[`🎮 Regulamentação concluída: ${lei.titulo}. ${resultado.programa.nome} entra em implantação com desenho ${resultado.sim.nota}/100.`,...current.eventosRecentes].slice(0,18),
+        redeSocial:{...current.redeSocial,posts:[{id:`reg_pub_${processoId}_${current.turno}`,autorId:'presidente',autor:current.perfilPresidencial?.nomePublico||'Presidente',handle:current.perfilPresidencial?.handle||'@Presidencia',texto:`Regulamentamos ${lei.titulo}. Agora começa a cobrança pela implementação: ${resultado.programa.nome}.`,tema:'programa',alcance:2200000,turno:current.turno},...(current.redeSocial?.posts||[])].slice(0,120)},
+      };
+    });
+    saveGame(get());
+    return resultado;
+  },
+
+  processarRegulamentacoesLeis: () => {
+    const state=get();
+    const resultado=processarRegulamentacaoMensal({regulamentacao:state.regulamentacaoLeis||REGULAMENTACAO_INICIAL,state,leis:state.leisDisponiveis,votacoes:state.votacoes});
+    set(current=>({
+      regulamentacaoLeis:resultado.regulamentacao,capitalPolitico:clamp(current.capitalPolitico-(resultado.perdaCapital||0)),
+      eventosRecentes:[...resultado.eventos,...resultado.novos.map(p=>`📘 Nova regulamentação pendente: ${p.tituloLei}.`),...current.eventosRecentes].slice(0,18),
+      redeSocial:(resultado.novos.length||resultado.eventos.length)?{...current.redeSocial,notificacoes:[...resultado.novos.map(p=>({id:`reg_mes_${p.id}_${current.turno}`,tipo:'regulamentacao',rota:'programas',turno:current.turno+1,texto:`Regulamentação pendente: ${p.tituloLei}. Prazo político: ${p.prazoTurnos} meses.`})),...resultado.eventos.map((texto,i)=>({id:`reg_atraso_${current.turno}_${i}`,tipo:'regulamentacao',rota:'programas',turno:current.turno+1,texto})),...(current.redeSocial?.notificacoes||[])].slice(0,50)}:current.redeSocial,
+    }));
+    return {ok:true,...resultado};
   },
 
   // =================================================================================
@@ -1714,13 +1931,21 @@ const useGameStore = create((set, get) => ({
     set(state=>{
       let economia={...state.economia}; let gruposSociais={...state.gruposSociais}; let estados=(state.estados||[]).map(e=>({...e})); let institucional={...state.institucional}; let oposicao={...state.oposicao}; let redeSocial={...state.redeSocial,posts:[...(state.redeSocial?.posts||[])]}; let eventos=[...state.eventosRecentes]; let promessas=(state.promessasPoliticas||[]).map(p=>({...p}));
       const programas=(state.programas||[]).map(original=>{
+        const bloqueio=original.bloqueioControle||{};
+        const bloqueioDuro=['suspensao_total','inconstitucional_total'].includes(bloqueio.stf)||bloqueio.tcu==='despesas_suspensas';
+        if(bloqueioDuro&&!['concluido','suspenso','rejeitado','vetado'].includes(original.status)){
+          const alertas=[{turno:state.turno,tipo:'controle',titulo:'Execução bloqueada por controle',texto:bloqueio.tcu==='despesas_suspensas'?'TCU suspendeu cautelarmente os desembolsos.':'STF impede a execução integral enquanto vigorar a decisão.'},...(original.alertas||[])].slice(0,8);
+          return {...original,status:'bloqueado_controle',alertas,atualizadoNoTurno:state.turno};
+        }
+        if(original.status==='bloqueado_controle'&&!bloqueioDuro)original={...original,status:'ativo'};
         if(original.status==='implantacao'){
           const restante=Math.max(0,(original.implantacaoRestante??1)-1);
           if(restante===0){eventos=[`🏁 ${original.nome} conclui implantação e entra em execução.`,...eventos];return {...original,status:'ativo',implantacaoRestante:0};}
           return {...original,implantacaoRestante:restante};
         }
         if(!['ativo','atrasado'].includes(original.status))return original;
-        const r=avaliarMesPrograma(original,{...state,nomeacoes:state.nomeacoes,estados,parceriasEmpresariais:state.parceriasEmpresariais,roll:Math.random()*100});
+        let r=avaliarMesPrograma(original,{...state,nomeacoes:state.nomeacoes,estados,parceriasEmpresariais:state.parceriasEmpresariais,roll:Math.random()*100});
+        if(['suspensao_parcial','inconstitucional_parcial'].includes(bloqueio.stf)||bloqueio.tcu==='ajustes_obrigatorios')r={...r,execucao:Math.max(20,r.execucao*.86),riscoExecucao:clamp(r.riscoExecucao+6)};
         economia=registrarMovimentoFiscal(economia,r.custoFederal,original.fiscalTipo);
         economia.crescimentoPib=Number(((economia.crescimentoPib||0)+(original.macro?.crescimentoPib||0)*(r.execucao/100)).toFixed(3));
         economia.desemprego=Math.max(3,Number(((economia.desemprego||8.4)+(original.macro?.desemprego||0)*(r.execucao/100)).toFixed(2)));
@@ -2081,6 +2306,160 @@ const useGameStore = create((set, get) => ({
     set(s=>({geopolitica:{...s.geopolitica,crises:s.geopolitica.crises.map(c=>c.id===criseId?{...c,status:'respondida',resposta:opcao,gravidade:Math.max(5,c.gravidade-(media?18:10))}:c),credibilidadeDiplomatica:clamp((s.geopolitica.credibilidadeDiplomatica||50)+(media?3:1))},mundo:{...s.mundo,softPowerBrasil:clamp(s.mundo.softPowerBrasil+(media?3:1))},eventosRecentes:[`🌐 Crise internacional: Planalto escolheu “${opcao}”.`,...s.eventosRecentes].slice(0,18)})); saveGame(get());return {ok:true};
   },
 
+  apresentarDefesaLeiSTF: (casoId) => {
+    const state = get();
+    if (state.capitalPolitico < 3) return { ok:false, motivo:'São necessários 3 pontos de Capital Político para mobilizar AGU, Casa Civil e pareceres técnicos.' };
+    const result = prepararDefesaSTF(state.controleLeis || CONTROLE_LEIS_INICIAL, casoId);
+    if (!result.ok) return result;
+    const caso = result.controle.casosSTF.find(c => c.id === casoId);
+    set(current => ({
+      controleLeis: result.controle,
+      capitalPolitico: clamp(current.capitalPolitico - result.custoCapital),
+      redeSocial: { ...current.redeSocial, notificacoes:(current.redeSocial?.notificacoes||[]).filter(n=>n.controleId!==casoId) },
+      eventosRecentes:[`⚖️ AGU apresenta defesa da constitucionalidade de ${caso?.tituloLei || 'lei federal'}.`,...(current.eventosRecentes||[])].slice(0,18),
+    }));
+    saveGame(get());
+    return { ok:true, caso };
+  },
+
+  apresentarPlanoAdequacaoTCU: (auditoriaId) => {
+    const state = get();
+    if (state.capitalPolitico < 2) return { ok:false, motivo:'São necessários 2 pontos de Capital Político para coordenar o plano de adequação.' };
+    const result = prepararPlanoTCU(state.controleLeis || CONTROLE_LEIS_INICIAL, auditoriaId);
+    if (!result.ok) return result;
+    const auditoria = result.controle.auditoriasTCU.find(a => a.id === auditoriaId);
+    set(current => ({
+      controleLeis: result.controle,
+      capitalPolitico: clamp(current.capitalPolitico - result.custoCapital),
+      redeSocial: { ...current.redeSocial, notificacoes:(current.redeSocial?.notificacoes||[]).filter(n=>n.controleId!==auditoriaId) },
+      eventosRecentes:[`🧾 Governo entrega plano de adequação ao TCU para ${auditoria?.tituloLei || 'a nova política pública'}.`,...(current.eventosRecentes||[])].slice(0,18),
+    }));
+    saveGame(get());
+    return { ok:true, auditoria };
+  },
+
+  processarControleLegislativo: () => {
+    const state = get();
+    const turnoAlvo = state.turno + 1;
+    const resultado = processarControleLegislativo({
+      controle: state.controleLeis || CONTROLE_LEIS_INICIAL,
+      votacoes: state.votacoes || [],
+      leis: state.leisDisponiveis || [],
+      corte: state.stf?.corte || [],
+      turno: turnoAlvo,
+    });
+
+    set(current => {
+      let votacoes = [...(current.votacoes || [])];
+      let programas = [...(current.programas || [])];
+      let institucional = { ...current.institucional };
+      let economia = { ...current.economia };
+      let capitalPolitico = current.capitalPolitico;
+      let eventos = [...(current.eventosRecentes || [])];
+      let notificacoes = [...(current.redeSocial?.notificacoes || [])];
+
+      const atualizarProposta=(propostaId, patch)=>{
+        votacoes=votacoes.map(v=>v.id===propostaId?{...v,...patch}:v);
+      };
+      const bloquearPrograma=(leiId, patch)=>{
+        programas=programas.map(p=>(p.leiId===leiId||p.leiOrigemId===leiId)?{...p,bloqueioControle:{...(p.bloqueioControle||{}),...patch},atualizadoNoTurno:turnoAlvo}:p);
+      };
+
+      resultado.novasAberturas.forEach(({instituicao,item})=>{
+        if(instituicao==='STF'){
+          atualizarProposta(item.propostaId,{controleConstitucional:{status:'judicializada',casoId:item.id,risco:item.riscoAtual}});
+          eventos.unshift(`⚖️ STF recebe ${item.tipo} contra ${item.tituloLei}; relatoria de ${item.relator}.`);
+          notificacoes.unshift({id:`not_${item.id}`,controleId:item.id,tipo:'institucional',rota:'instituicoes',turno:turnoAlvo,texto:`STF: ${item.tituloLei} foi judicializada. A AGU pode apresentar defesa antes da análise da liminar.`});
+          institucional.riscoJuridico=clamp((institucional.riscoJuridico||10)+2);
+        }else{
+          atualizarProposta(item.propostaId,{controleTCU:{status:'auditoria_aberta',auditoriaId:item.id,risco:item.riscoAtual}});
+          eventos.unshift(`🧾 TCU abre acompanhamento da implementação de ${item.tituloLei}.`);
+          notificacoes.unshift({id:`not_${item.id}`,controleId:item.id,tipo:'institucional',rota:'instituicoes',turno:turnoAlvo,texto:`TCU: ${item.tituloLei} entrou em acompanhamento. O governo pode apresentar plano de adequação.`});
+        }
+      });
+
+      resultado.atualizacoes.forEach(({instituicao,tipo,item})=>{
+        if(instituicao==='STF'&&tipo==='liminar'){
+          const alcance=item.liminar?.alcance||'nenhum';
+          atualizarProposta(item.propostaId,{controleConstitucional:{status:'liminar',casoId:item.id,risco:item.riscoAtual,liminar:item.liminar}});
+          if(alcance==='total'){
+            bloquearPrograma(item.leiId,{stf:'suspensao_total',casoId:item.id});
+            capitalPolitico=clamp(capitalPolitico-2);
+            institucional.tensaoInstitucional=clamp((institucional.tensaoInstitucional||10)+2);
+            eventos.unshift(`⛔ STF suspende liminarmente a execução de ${item.tituloLei}.`);
+          }else if(alcance==='parcial'){
+            bloquearPrograma(item.leiId,{stf:'suspensao_parcial',casoId:item.id});
+            capitalPolitico=clamp(capitalPolitico-1);
+            eventos.unshift(`⚖️ STF restringe parcialmente ${item.tituloLei} em decisão liminar.`);
+          }else{
+            eventos.unshift(`✅ STF nega liminar e mantém ${item.tituloLei} em vigor até o julgamento.`);
+          }
+        }
+        if(instituicao==='TCU'&&tipo==='achados'){
+          atualizarProposta(item.propostaId,{controleTCU:{status:'achados_preliminares',auditoriaId:item.id,risco:item.riscoAtual,achados:item.achados}});
+          eventos.unshift(`🧾 TCU apresenta achados preliminares sobre ${item.tituloLei}.`);
+          notificacoes.unshift({id:`not_ach_${item.id}`,controleId:item.id,tipo:'institucional',rota:'instituicoes',turno:turnoAlvo,texto:`TCU apresentou achados preliminares em ${item.tituloLei}. Ainda há tempo para um plano de adequação.`});
+        }
+      });
+
+      resultado.resolucoesNovas.forEach(({instituicao,item})=>{
+        if(instituicao==='STF'){
+          atualizarProposta(item.propostaId,{controleConstitucional:{status:'julgado',casoId:item.id,resultado:item.resultado,placar:item.placar,votos:item.votos}});
+          if(item.resultado==='inconstitucional_total'){
+            bloquearPrograma(item.leiId,{stf:'inconstitucional_total',casoId:item.id});
+            capitalPolitico=clamp(capitalPolitico-4);
+            institucional.tensaoInstitucional=clamp((institucional.tensaoInstitucional||10)+4);
+            institucional.riscoJuridico=clamp((institucional.riscoJuridico||10)+3);
+            eventos.unshift(`⚖️ STF declara ${item.tituloLei} inconstitucional em seu núcleo.`);
+          }else if(item.resultado==='inconstitucional_parcial'){
+            bloquearPrograma(item.leiId,{stf:'inconstitucional_parcial',casoId:item.id});
+            capitalPolitico=clamp(capitalPolitico-2);
+            institucional.tensaoInstitucional=clamp((institucional.tensaoInstitucional||10)+2);
+            eventos.unshift(`⚖️ STF derruba trechos de ${item.tituloLei}; o restante segue vigente.`);
+          }else{
+            bloquearPrograma(item.leiId,{stf:'constitucional',casoId:item.id});
+            institucional.respeitoConstitucional=clamp((institucional.respeitoConstitucional||80)+1);
+            eventos.unshift(`✅ STF confirma a constitucionalidade de ${item.tituloLei}.`);
+          }
+        }else{
+          atualizarProposta(item.propostaId,{controleTCU:{status:'decidida',auditoriaId:item.id,resultado:item.resultado,scoreFinal:item.scoreFinal}});
+          if(item.resultado==='suspensao_despesas'){
+            bloquearPrograma(item.leiId,{tcu:'despesas_suspensas',auditoriaId:item.id});
+            capitalPolitico=clamp(capitalPolitico-3);
+            economia.confiancaMercado=clamp((economia.confiancaMercado||50)-1);
+            institucional.riscoJuridico=clamp((institucional.riscoJuridico||10)+3);
+            eventos.unshift(`⛔ TCU determina suspensão cautelar de despesas na execução de ${item.tituloLei}.`);
+          }else if(item.resultado==='determinacao_ajustes'){
+            bloquearPrograma(item.leiId,{tcu:'ajustes_obrigatorios',auditoriaId:item.id});
+            capitalPolitico=clamp(capitalPolitico-1);
+            institucional.riscoJuridico=clamp((institucional.riscoJuridico||10)+1);
+            eventos.unshift(`🧾 TCU determina ajustes obrigatórios na implementação de ${item.tituloLei}.`);
+          }else if(item.resultado==='ressalvas'){
+            bloquearPrograma(item.leiId,{tcu:'ressalvas',auditoriaId:item.id});
+            eventos.unshift(`🧾 TCU libera ${item.tituloLei} com ressalvas e monitoramento.`);
+          }else{
+            bloquearPrograma(item.leiId,{tcu:'regularidade',auditoriaId:item.id});
+            institucional.credibilidadeDemocratica=clamp((institucional.credibilidadeDemocratica||80)+1);
+            eventos.unshift(`✅ TCU conclui pela regularidade da implementação de ${item.tituloLei}.`);
+          }
+        }
+      });
+
+      return {
+        controleLeis: resultado.controle,
+        votacoes,
+        programas,
+        institucional,
+        economia,
+        capitalPolitico,
+        redeSocial:{...current.redeSocial,notificacoes:notificacoes.slice(0,50)},
+        eventosRecentes:eventos.slice(0,18),
+      };
+    });
+    saveGame(get());
+    return resultado;
+  },
+
   processarInstitucional: () => {
     set(state => {
       const novoInstitucional = { ...state.institucional };
@@ -2130,9 +2509,14 @@ const useGameStore = create((set, get) => ({
     if (antes.capitalPolitico < custoNomeacao) return false;
 
     set(state => {
+      const vinculoTexto=String(candidato.vinculo||'');
+      const partidoPrevio=candidato.partidoId||state.partidos.find(p=>vinculoTexto.toUpperCase().includes(p.sigla))?.id||null;
+      const partidoMeta=state.partidos.find(p=>p.id===partidoPrevio);
+      const alaPrevia=partidoMeta?.alas?.find(a=>vinculoTexto.toLowerCase().includes(a.nome.toLowerCase().split(' ')[0]))?.id||null;
       const base = {
         cargoId,
         ...candidato,
+        ...(partidoPrevio?{partidoId:partidoPrevio,filiacaoPartidaria:{partidoId:partidoPrevio,alaId:alaPrevia,turno:state.turno,origem:'trajetoria_previa'}}:{}),
         lealdade: candidato.lealdadeInicial ?? 70,
         habTecnica: candidato.habilidadeTecnica ?? 50,
         habPolitica: candidato.habilidadePolitica ?? 50,
@@ -3121,26 +3505,53 @@ const useGameStore = create((set, get) => ({
   }),
 
   negociarConvencao: (caciqueId,ofertaId) => {
-    const r=aplicarOfertaConvencao(get().eleicao,caciqueId,ofertaId);
+    const state=get();
+    const r=aplicarOfertaConvencao(state.eleicao,caciqueId,ofertaId);
     if(!r.ok)return r;
-    set(state=>({
-      eleicao:r.eleicao,
-      capitalPolitico:Math.max(0,state.capitalPolitico-(r.offer?.risco||0)*.25),
-      eventosRecentes:[`🗳️ Convenção: ${r.cacique.nome} ${r.accepted?'aceitou':'resistiu à'} proposta “${r.offer.nome}”.`,...state.eventosRecentes].slice(0,18),
+    const partido=state.partidos.find(p=>p.id===r.eleicao.partidoAtual);
+    const partidoEleitoral=sincronizarPartidoEleitoral({eleicao:r.eleicao,partido,sistemaPartidario:state.sistemaPartidario,estados:state.estados,turno:state.turno});
+    const eleicao={...r.eleicao,partidoEleitoral,convencao:{...r.eleicao.convencao,apoioDelegados:partidoEleitoral.delegados.apoioPct}};
+    set(current=>({
+      eleicao,
+      capitalPolitico:Math.max(0,current.capitalPolitico-(r.offer?.risco||0)*.25),
+      eventosRecentes:[`🗳️ Convenção: ${r.cacique.nome} ${r.accepted?'aceitou':'resistiu à'} proposta “${r.offer.nome}”.`,...current.eventosRecentes].slice(0,18),
     }));
-    saveGame(get()); return r;
+    saveGame(get()); return {...r,eleicao,partidoEleitoral};
   },
 
   oficializarConvencao: () => {
     const state=get(); const data=new Date(state.dataAtual).toISOString().slice(0,10);
     if(data<'2026-07-20'||data>'2026-08-05')return {ok:false,motivo:'A candidatura só pode ser oficializada durante a janela de convenções (20/07 a 05/08).'};
-    const r=finalizarConvencao(state.eleicao); if(!r.ok)return r;
-    set(state=>({eleicao:r.eleicao,eventosRecentes:[`🏛️ Convenção: ${state.perfilPresidencial.nomePublico} é oficializado candidato à Presidência.`,...state.eventosRecentes].slice(0,18)}));
+    const partido=state.partidos.find(p=>p.id===state.eleicao.partidoAtual);
+    const partidoEleitoral=sincronizarPartidoEleitoral({eleicao:state.eleicao,partido,sistemaPartidario:state.sistemaPartidario,estados:state.estados,turno:state.turno});
+    const r=finalizarConvencaoPartidaria({eleicao:{...state.eleicao,partidoEleitoral},partidoEleitoral,partido,turno:state.turno}); if(!r.ok)return r;
+    set(current=>({eleicao:r.eleicao,eventosRecentes:[`🏛️ Convenção: ${current.perfilPresidencial.nomePublico} vence a disputa interna com ${r.resumo.apoioPct.toFixed(1)}% dos delegados e é oficializado candidato à Presidência.`,...current.eventosRecentes].slice(0,18)}));
+    saveGame(get()); return r;
+  },
+
+  ajustarFundoPartidarioEleitoral: (categoria,delta) => {
+    const state=get(); const partido=state.partidos.find(p=>p.id===state.eleicao?.partidoAtual); if(!partido)return {ok:false,motivo:'Partido eleitoral não encontrado.'};
+    const base=sincronizarPartidoEleitoral({eleicao:state.eleicao,partido,sistemaPartidario:state.sistemaPartidario,estados:state.estados,turno:state.turno});
+    const r=ajustarDistribuicaoFundo({partidoEleitoral:base,categoria,delta,turno:state.turno}); if(!r.ok)return r;
+    const dist=r.partidoEleitoral.fundo.distribuicao; const shift=(dist.presidencia||0)-38;
+    const partidos=state.partidos.map(p=>p.id!==partido.id?p:{...p,diretorios:(p.diretorios||[]).map(d=>({...d,satisfacao:clamp((d.satisfacao||50)-Math.max(0,shift)*.025+Math.max(0,(dist.governadores||34)-34)*.03)}))});
+    const eleicao={...state.eleicao,partidoEleitoral:r.partidoEleitoral,recursos:{...state.eleicao.recursos,fefcProjetado:r.partidoEleitoral.fundo.valores.presidencia}};
+    set(current=>({eleicao,partidos,eventosRecentes:[`💰 ${partido.sigla} revê a distribuição eleitoral: Presidência ${dist.presidencia}% · Governadores ${dist.governadores}% · Câmara ${dist.camara}% · Senado ${dist.senado}%.`,...current.eventosRecentes].slice(0,18)}));
+    saveGame(get()); return {...r,eleicao};
+  },
+
+  decidirCandidaturaPartidariaEstadual: (uf,estrategia) => {
+    const state=get(); const partido=state.partidos.find(p=>p.id===state.eleicao?.partidoAtual); if(!partido)return {ok:false,motivo:'Partido eleitoral não encontrado.'};
+    const base=sincronizarPartidoEleitoral({eleicao:state.eleicao,partido,sistemaPartidario:state.sistemaPartidario,estados:state.estados,turno:state.turno});
+    const r=decidirCandidaturaEstadual({partidoEleitoral:base,partido,sistemaPartidario:state.sistemaPartidario,uf,estrategia,capitalPolitico:state.capitalPolitico,turno:state.turno}); if(!r.ok)return r;
+    const partidos=state.partidos.map(p=>p.id===partido.id?r.partido:p);
+    const corridasGovernadores=(state.eleicao?.corridasGovernadores||[]).map(c=>c.uf===uf?{...c,candidaturaPartidaria:{partidoId:partido.id,sigla:partido.sigla,nome:r.item.nomeEscolhido,status:r.item.status,estrategia:r.item.estrategia,turno:state.turno}}:c);
+    set(current=>({eleicao:{...current.eleicao,partidoEleitoral:r.partidoEleitoral,corridasGovernadores},partidos,capitalPolitico:r.capitalPolitico,eventosRecentes:[`🗺️ ${partido.sigla}-${uf}: ${r.item.nomeEscolhido} · ${r.item.status}.`,...current.eventosRecentes].slice(0,18)}));
     saveGame(get()); return r;
   },
 
   trocarPartidoEleitoral: (partidoId) => {
-    const state=get(); const r=mudarFiliacaoEleitoral(state.eleicao,partidoId,state.dataAtual); if(!r.ok)return r;
+    const state=get(); const r=mudarFiliacaoEleitoral({...state.eleicao,partidoEleitoral:null},partidoId,state.dataAtual); if(!r.ok)return r;
     const antigo=state.eleicao.partidoAtual; const p=getParty(partidoId);
     const partidos=state.partidos.map(x=>x.id===antigo?{...x,apoio:clamp(x.apoio-12)}:x.id===partidoId?{...x,apoio:clamp(x.apoio+12)}:x);
     set(current=>({eleicao:r.eleicao,perfilPresidencial:{...current.perfilPresidencial,partidoId},partidos,oposicao:{...current.oposicao,forca:clamp((current.oposicao.forca||30)+4)},eventosRecentes:[`🔄 Filiação eleitoral: ${current.perfilPresidencial.nomePublico} migra para ${p.sigla}. A coerência da candidatura será cobrada.`,...current.eventosRecentes].slice(0,18)}));
@@ -3158,7 +3569,7 @@ const useGameStore = create((set, get) => ({
   captarRecursoEleitoral: (tipo) => {
     const state=get();
     const relGov=(state.estados||[]).reduce((s,e)=>s+(e.relacaoPlanalto||50),0)/Math.max(1,state.estados.length);
-    const r=executarCaptacao(state.eleicao,tipo,{reputacaoDigital:state.redeSocial?.reputacaoDigital||50,relacaoGovernadores:relGov,dataAtual:state.dataAtual}); if(!r.ok)return r;
+    const r=executarCaptacao(state.eleicao,tipo,{reputacaoDigital:state.redeSocial?.reputacaoDigital||50,relacaoGovernadores:relGov,dataAtual:state.dataAtual,fefcCota:tipo==='fundo_eleitoral'?state.eleicao?.partidoEleitoral?.fundo?.valores?.presidencia:null}); if(!r.ok)return r;
     set(current=>({eleicao:r.eleicao,redeSocial:tipo==='crowdfunding'?{...current.redeSocial,posts:[{id:`crowd_${current.turno}_${Date.now()}`,autorId:'presidente',autor:current.perfilPresidencial.nomePublico,handle:current.perfilPresidencial.handle,texto:'Abrimos financiamento coletivo transparente da pré-campanha. Cada apoio precisa estar identificado e dentro das regras eleitorais.',tema:'eleicoes',alcance:2300000,turno:current.turno},...(current.redeSocial.posts||[])].slice(0,120)}:current.redeSocial,eventosRecentes:[`💳 Pré-campanha: ${tipo} arrecadou ${r.ganho.toFixed(1)} unidades eleitorais.`,...current.eventosRecentes].slice(0,18)}));
     saveGame(get()); return r;
   },
@@ -3239,6 +3650,11 @@ const useGameStore = create((set, get) => ({
   processarTurnoEleitoral: () => {
     const state=get();
     let eleicao=processarMesEleitoral({eleicao:state.eleicao||criarEstadoEleitoralInicial({perfil:state.perfilPresidencial,estados:state.estados}),estados:state.estados,gruposSociais:state.gruposSociais,perfil:state.perfilPresidencial,oposicao:state.oposicao,nomeacoes:state.nomeacoes,atoresCongresso:state.atoresCongresso,turno:state.turno,dataAtual:state.dataAtual});
+    const partidoEleitoralAtual=state.partidos.find(p=>p.id===eleicao.partidoAtual);
+    if(partidoEleitoralAtual){
+      const partidoEleitoral=sincronizarPartidoEleitoral({eleicao,partido:partidoEleitoralAtual,sistemaPartidario:state.sistemaPartidario,estados:state.estados,turno:state.turno});
+      eleicao=aplicarEfeitoMaquinaEleitoral({...eleicao,partidoEleitoral,convencao:{...eleicao.convencao,apoioDelegados:partidoEleitoral.delegados.apoioPct},recursos:{...eleicao.recursos,fefcProjetado:partidoEleitoral.fundo.valores.presidencia}});
+    }
     let nomeacoes=[...state.nomeacoes]; let atores=[...state.atoresCongresso]; const eventos=[];
     // A IA pode retirar figuras do governo quando elas decidem disputar outro cargo.
     const candMin=(eleicao.candidaturasPersonagens||[]).filter(c=>c.origem==='ministro'&&['presidencia','governo_estadual'].includes(c.office)&&!c.saiuDoGoverno);
@@ -3246,9 +3662,7 @@ const useGameStore = create((set, get) => ({
       const c=candMin[0]; const min=nomeacoes.find(n=>n.id===c.personagemId);
       if(min){nomeacoes=nomeacoes.filter(n=>n.id!==c.personagemId);eleicao={...eleicao,candidaturasPersonagens:eleicao.candidaturasPersonagens.map(x=>x.personagemId===c.personagemId?{...x,saiuDoGoverno:true,status:'candidato'}:x)};eventos.push(`🚪 ${min.nome} deixa o ministério para disputar ${c.office==='presidencia'?'a Presidência':'um governo estadual'}.`);}
     }
-    // Durante a janela, lideranças da Câmara podem realmente mudar de legenda.
-    const janela=(eleicao.movimentosIA||[]).filter(m=>m.turno===state.turno&&m.tipo==='janela');
-    janela.slice(0,1).forEach(m=>{const idx=atores.findIndex(a=>a.id===m.personagemId);if(idx>=0){const atual=atores[idx];const opcoes=['esq','centro','dir','ind'].filter(id=>id!==atual.partidoId);const destino=opcoes[(state.turno+idx)%opcoes.length];atores[idx]={...atual,partidoId:destino,relacao:clamp((atual.relacao||50)-2)};eventos.push(`🔁 ${atual.nome} troca de legenda e passa a integrar ${getParty(destino).sigla}.`);}});
+    // 4.9.7.4: trocas de legenda e dissidências são resolvidas pelo motor partidário, evitando migração aleatória duplicada.
     // Personagens que se lançam ao Planalto entram na lista presidencial dinâmica.
     const novos=(eleicao.candidaturasPersonagens||[]).filter(c=>c.office==='presidencia'&&!eleicao.adversarios.some(a=>a.id===c.personagemId||a.id===c.id)&&c.popularidade>=68).slice(0,1);
     if(novos.length){const c=novos[0];eleicao={...eleicao,adversarios:[...eleicao.adversarios,{id:c.personagemId,nome:c.nome,origem:c.cargoAtual,uf:c.uf,ideologia:'centro',avatar:c.avatar,pesoEleitoral:c.popularidade,conhecimento:48,intencaoLatente:8,medido:0,recursos:16,focoEstados:[],estrategia:'lancamento',coerencia:74,ativo:true}]};eventos.push(`🚨 ${c.nome} entra na disputa presidencial.`);}
@@ -3450,6 +3864,116 @@ const useGameStore = create((set, get) => ({
     return {ok:true,...resultado};
   },
 
+  alternarBandeiraLegislativa: (leiId) => {
+    const state=get();
+    const proposta=(state.votacoes||[]).find(v=>v.leiId===leiId&&['sancionada','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado'].includes(v.status)&&v.textoFinal?.vigencia!=='sem_vigencia');
+    const result=alternarBandeiraLegado(state.legadoLegislativo||LEGADO_LEGISLATIVO_INICIAL,leiId,!!proposta);
+    if(!result.ok)return result;
+    set({legadoLegislativo:result.legado});
+    saveGame(get());
+    return {ok:true,bandeiras:result.legado.bandeiras};
+  },
+
+  obterResumoLegadoLegislativo: () => construirLegadoLegislativo(get()),
+
+  processarLegadoLegislativo: () => {
+    const state=get();
+    const result=processarLegadoLegislativoMensal({legado:state.legadoLegislativo||LEGADO_LEGISLATIVO_INICIAL,state:{...state,turno:state.turno+1}});
+    const notices=result.novosMarcos.map(m=>`🏛️ Legado legislativo: ${m.texto}`);
+    set(current=>({
+      legadoLegislativo:result.legado,
+      eleicao:{...current.eleicao,legadoLegislativo:{indice:result.resumo.indice,pontos:result.legado.pontos,bandeiras:result.legado.bandeiras,emblematicas:result.resumo.emblematicas.length}},
+      eventosRecentes:[...notices,...current.eventosRecentes].slice(0,18),
+    }));
+    return result;
+  },
+
+  processarVidaPartidaria: () => {
+    const state=get();
+    const turnoAlvo=state.turno+1;
+    const dataAlvo=new Date(state.dataAtual); dataAlvo.setMonth(dataAlvo.getMonth()+1);
+    const vida=processPartyLife({partidos:state.partidos,state,turno:turnoAlvo});
+    const filiacao=processMinisterAffiliations({nomeacoes:state.nomeacoes,partidos:vida.partidos,perfilPresidencial:state.perfilPresidencial,turno:turnoAlvo});
+    let partidosPreGoverno=vida.partidos.map(p=>({...p}));
+    filiacao.joins.forEach(j=>{
+      partidosPreGoverno=partidosPreGoverno.map(p=>p.id===j.partidoId?{...p,filiadosNacionais:(p.filiadosNacionais||0)+1,prestigioPartidario:clamp((p.prestigioPartidario||50)+.5),satisfacaoDirecao:clamp((p.satisfacaoDirecao||50)+.4)}:p);
+    });
+    const governo=processPartyInGovernment({partidos:partidosPreGoverno,state:{...state,partidos:partidosPreGoverno,nomeacoes:filiacao.nomeacoes,turno:turnoAlvo},turno:turnoAlvo});
+    const realinhamento=processPartyRealignment({
+      partidos:governo.partidos,nomeacoes:filiacao.nomeacoes,atoresCongresso:state.atoresCongresso,estados:state.estados,
+      sistemaPartidario:state.sistemaPartidario,state:{...state,partidos:governo.partidos,nomeacoes:filiacao.nomeacoes},turno:turnoAlvo,dataAtual:dataAlvo,
+    });
+    const noticias=[...realinhamento.notices,...governo.notices,...filiacao.events,...vida.notices];
+    set(current=>({
+      partidos:realinhamento.partidos,
+      nomeacoes:realinhamento.nomeacoes,
+      atoresCongresso:realinhamento.atoresCongresso,
+      estados:realinhamento.estados,
+      sistemaPartidario:realinhamento.sistemaPartidario,
+      eventosRecentes:[...noticias,...current.eventosRecentes].slice(0,18),
+      redeSocial:noticias.length?{...current.redeSocial,notificacoes:[...noticias.slice(0,6).map((texto,i)=>({id:`party_${turnoAlvo}_${i}_${Date.now()}`,tipo:'politica',turno:turnoAlvo,rota:'partidos',texto:texto.replace(/^[^\wÀ-ÿ]+/, '')})),...(current.redeSocial?.notificacoes||[])].slice(0,40)}:current.redeSocial,
+    }));
+    return {...vida,partidos:realinhamento.partidos,governo,filiacoes:filiacao.joins,realinhamento};
+  },
+
+  executarAcaoPartidaria: (acaoId,{uf=null,alaId=null}={}) => {
+    const state=get();
+    const partidoId=state.perfilPresidencial?.partidoId;
+    if(!partidoId)return {ok:false,motivo:'O Presidente não possui partido definido.'};
+    const result=applyPartyAction({partidos:state.partidos,partidoId,acaoId,uf,alaId,capitalPolitico:state.capitalPolitico,turno:state.turno});
+    if(!result.ok)return result;
+    set(current=>{
+      let eleicao=current.eleicao;
+      if(eleicao?.partidoAtual===partidoId){const pe=sincronizarPartidoEleitoral({eleicao,partido:result.partidos.find(p=>p.id===partidoId),sistemaPartidario:current.sistemaPartidario,estados:current.estados,turno:current.turno});eleicao={...eleicao,partidoEleitoral:pe,convencao:{...eleicao.convencao,apoioDelegados:pe.delegados.apoioPct}};}
+      return {partidos:result.partidos,eleicao,capitalPolitico:result.capitalPolitico,eventosRecentes:[`🏛️ ${result.partido.sigla}: ${result.texto}.`,...current.eventosRecentes].slice(0,18)};
+    });
+    saveGame(get());
+    return result;
+  },
+
+  responderCobrancaPartidaria: (cobrancaId,resposta) => {
+    const state=get();
+    const partidoId=state.perfilPresidencial?.partidoId;
+    if(!partidoId)return {ok:false,motivo:'O Presidente não possui partido definido.'};
+    const result=respondPartyGovernmentDemand({partidos:state.partidos,partidoId,demandId:cobrancaId,resposta,capitalPolitico:state.capitalPolitico,turno:state.turno});
+    if(!result.ok)return result;
+    set(current=>{
+      let eleicao=current.eleicao;
+      if(eleicao?.partidoAtual===partidoId){const pe=sincronizarPartidoEleitoral({eleicao,partido:result.partidos.find(p=>p.id===partidoId),sistemaPartidario:current.sistemaPartidario,estados:current.estados,turno:current.turno});eleicao={...eleicao,partidoEleitoral:pe,convencao:{...eleicao.convencao,apoioDelegados:pe.delegados.apoioPct}};}
+      return {partidos:result.partidos,eleicao,capitalPolitico:result.capitalPolitico,eventosRecentes:[`🏛️ ${result.partido.sigla}: ${result.texto}`,...current.eventosRecentes].slice(0,18),redeSocial:{...current.redeSocial,notificacoes:[{id:`party_gov_resp_${current.turno}_${Date.now()}`,tipo:'politica',turno:current.turno,rota:'partidos',texto:`${result.partido.sigla}: ${result.texto}`},...(current.redeSocial?.notificacoes||[])].slice(0,40)}};
+    });
+    saveGame(get());
+    return result;
+  },
+
+  responderPropostaPartidaria: (propostaId,resposta) => {
+    const state=get(); const partidoId=state.perfilPresidencial?.partidoId;
+    if(!partidoId)return {ok:false,motivo:'O Presidente não possui partido definido.'};
+    const result=respondPartyAllianceProposal({partidos:state.partidos,sistemaPartidario:state.sistemaPartidario,partidoId,propostaId,resposta,capitalPolitico:state.capitalPolitico,turno:state.turno});
+    if(!result.ok)return result;
+    set(current=>{
+      let eleicao=current.eleicao;
+      if(eleicao?.partidoAtual===partidoId){const pe=sincronizarPartidoEleitoral({eleicao,partido:result.partidos.find(p=>p.id===partidoId),sistemaPartidario:result.sistemaPartidario,estados:current.estados,turno:current.turno});eleicao={...eleicao,partidoEleitoral:pe,convencao:{...eleicao.convencao,apoioDelegados:pe.delegados.apoioPct},recursos:{...eleicao.recursos,fefcProjetado:pe.fundo.valores.presidencia}};}
+      return {partidos:result.partidos,sistemaPartidario:result.sistemaPartidario,eleicao,capitalPolitico:result.capitalPolitico,eventosRecentes:[`🤝 ${result.texto}`,...current.eventosRecentes].slice(0,18)};
+    });
+    saveGame(get()); return result;
+  },
+
+  intervirDiretorioPartidario: (uf) => {
+    const state=get(); const partidoId=state.perfilPresidencial?.partidoId;
+    if(!partidoId)return {ok:false,motivo:'O Presidente não possui partido definido.'};
+    const result=intervenePartyDirectorate({partidos:state.partidos,partidoId,uf,capitalPolitico:state.capitalPolitico,turno:state.turno});
+    if(!result.ok)return result;
+    const registro={id:`int_${partidoId}_${uf}_${state.turno}`,turno:state.turno,partidoId,uf,tipo:'intervencao_nacional',resultado:result.backlash?'dissidencia':'comando_recomposto'};
+    set(current=>{
+      const sistemaPartidario={...hydratePartySystem(current.sistemaPartidario),intervencoes:[registro,...(current.sistemaPartidario?.intervencoes||[])].slice(0,40),historico:[{turno:current.turno,tipo:'intervencao',texto:result.texto},...(current.sistemaPartidario?.historico||[])].slice(0,80)};
+      let eleicao=current.eleicao;
+      if(eleicao?.partidoAtual===partidoId){const pe=sincronizarPartidoEleitoral({eleicao,partido:result.partidos.find(p=>p.id===partidoId),sistemaPartidario,estados:current.estados,turno:current.turno});eleicao={...eleicao,partidoEleitoral:pe,convencao:{...eleicao.convencao,apoioDelegados:pe.delegados.apoioPct}};}
+      return {partidos:result.partidos,eleicao,capitalPolitico:result.capitalPolitico,sistemaPartidario,eventosRecentes:[`⚖️ ${result.texto}`,...current.eventosRecentes].slice(0,18)};
+    });
+    saveGame(get()); return result;
+  },
+
   processarGovernabilidadeMensal: () => {
     const state=get();
     const resultado=aplicarVariacaoMensalCapital(state);
@@ -3488,17 +4012,21 @@ const useGameStore = create((set, get) => ({
     get().processarAutonomiaInstitucional();
     get().processarTurnoJudiciario();
     get().processarTurnoCongresso();
+    get().processarControleLegislativo();
     get().processarEventosNacionais();
     get().processarProjetosEspeciais();
     get().processarTurnoEstatais();
     get().processarTurnoOposicao();
     get().processarEventosFederativos();
     get().processarTurnoPoliticoGlobal();
+    get().processarVidaPartidaria();
     get().processarCascatasSistemicas();
     get().processarConsequenciasPendentes();
     get().processarOrquestradorPolitico();
     get().processarParceriasEmpresariais();
+    get().processarRegulamentacoesLeis();
     get().processarProgramasGovernamentais();
+    get().processarLegadoLegislativo();
 
     set(state => {
       let economia={...state.economia};
@@ -3577,7 +4105,10 @@ const useGameStore = create((set, get) => ({
         comercio:{exportacoes:comercioExterior.exportacoesMensais,importacoes:comercioExterior.importacoesMensais,balanca:comercioExterior.balanca,acordos:(comercioExterior.acordos||[]).length,oportunidades:(comercioExterior.oportunidades||[]).length},
         agendaRealizada:(state.agendaCalendario?.historico||[]).filter(h=>h.status==='realizado'&&h.turno===state.turno).slice(0,6).map(h=>({id:h.id,titulo:h.titulo,tipo:h.tipo,local:h.local,dataISO:h.dataISO})),
         programas:(state.programas||[]).filter(p=>['ativo','atrasado','implantacao','concluido'].includes(p.status)).slice(0,5).map(p=>({id:p.id,nome:p.nome,status:p.status,progresso:p.progresso||0,execucao:p.execucao||0,risco:p.riscoExecucao||0,gasto:p.gastoAcumulado||0})),
+        regulamentacao:{pendentes:(state.regulamentacaoLeis?.processos||[]).filter(p=>p.status==='pendente').length,atrasadas:(state.regulamentacaoLeis?.processos||[]).filter(p=>p.status==='pendente'&&(p.mesesEmAtraso||0)>0).length,capacidadeRestante:state.regulamentacaoLeis?.capacidadeRestante??0,capacidadeMax:state.regulamentacaoLeis?.capacidadeMax??2},
+        legadoLegislativo:{indice:state.legadoLegislativo?.indice||0,pontos:state.legadoLegislativo?.pontos||0,bandeiras:(state.legadoLegislativo?.bandeiras||[]).length,emblematicas:construirLegadoLegislativo(state).emblematicas.length,vigentes:construirLegadoLegislativo(state).vigentes},
         enredos:(state.politicalOrchestrator?.priorityQueue||[]).slice(0,4),
+        partidoPresidencial:(()=>{const p=state.partidos.find(x=>x.id===state.perfilPresidencial?.partidoId);const g=p?.governoPartidario||{};return p?{sigla:p.sigla,humor:p.humorInterno||'estável',satisfacao:p.satisfacaoDirecao||50,unidade:p.unidadeInterna||50,disciplina:p.disciplina||50,maquina:p.maquina||50,caixa:p.caixaPartidario||0,filiados:p.filiadosNacionais||0,relacaoPresidente:g.relacaoPresidente||50,coerencia:g.coerenciaProgramatica||50,cobrancasAbertas:(g.cobrancas||[]).filter(c=>['pendente','comprometida','negociada'].includes(c.status)).length}:null;})(),
       };
       return {
         turno:state.turno+1,dataAtual:novaData,dataString:`${meses[novaData.getMonth()]} ${novaData.getFullYear()}`,
@@ -3656,7 +4187,7 @@ const useGameStore = create((set, get) => ({
     } else if(rid==='empresa_nuclear_avancada'){
       if(state.capitalPolitico<8)return {ok:false,motivo:'São necessários 8 pontos de capital político para protocolar a criação da empresa.'};
       if(state.estatais.some(e=>e.id===estatalNuclearAvancada.id))return {ok:false,motivo:'A empresa já integra a rede estatal.'};
-      const emTramitacao=(state.votacoes||[]).some(v=>v.leiId===leiCriacaoEBTN.id&&!['arquivada','vetada','sancionada'].includes(v.status));
+      const emTramitacao=(state.votacoes||[]).some(v=>v.leiId===leiCriacaoEBTN.id&&!['arquivada','vetada','sancionada','vetada_mantida','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado'].includes(v.status));
       if(emTramitacao)return {ok:false,motivo:'O projeto de criação da empresa já está em tramitação.'};
       const lei=state.leisDisponiveis.find(l=>l.id===leiCriacaoEBTN.id)||leiCriacaoEBTN;
       const proposta=criarProposta({lei,turno:state.turno,atores:state.atoresCongresso,partidos:state.partidos});

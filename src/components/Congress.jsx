@@ -8,9 +8,11 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  Crown,
   FilePenLine,
   Filter,
   Gavel,
@@ -42,16 +44,20 @@ import { ACOES_ARTICULACAO, calcularProjecao } from '../game/congressEngine';
 import { categoriasLeis } from '../data/seed/leis';
 import { origemLegislativaMeta } from '../game/legislativeAgendaEngine';
 import { AJUSTES_GOVERNO, emendasResumo } from '../game/amendmentEngine';
+import { gerarDispositivosVeto, calcularProjecaoDerrubadaVeto } from '../game/vetoEngine';
 import GameIcon from './GameIcon';
 import PoliticalAvatar from './PoliticalAvatar';
 import CharacterDossierModal from './CharacterDossier';
+import LegislativeLegacy from './LegislativeLegacy';
 import { toast } from './sonner';
 
+const PROPOSALS_PER_PAGE = 2;
+
 const PARTY_COLORS = {
-  esq: '#DC4C5B',
-  centro: '#7D8796',
-  ind: '#D6A246',
-  dir: '#4C82D8',
+  esq: '#C84552',
+  centro: '#E28A3A',
+  ind: '#3F7FBF',
+  dir: '#3D9B67',
 };
 
 const CATEGORY_META = {
@@ -128,6 +134,10 @@ const statusLabel = (proposta) => {
   if (proposta.status === 'aguarda_segundo_turno') return 'Entre turnos';
   if (proposta.status === 'senado') return 'No Senado';
   if (proposta.status === 'aguardando_sancao') return 'Na mesa do Presidente';
+  if (proposta.status === 'veto_congresso') return 'Veto em análise';
+  if (proposta.status === 'sancionada_veto_mantido') return 'Lei com veto mantido';
+  if (proposta.status === 'sancionada_veto_derrubado' || proposta.status === 'promulgada_veto_derrubado') return 'Veto derrubado';
+  if (proposta.status === 'vetada_mantida') return 'Veto mantido';
   if (proposta.status === 'sancionada') return 'Sancionada';
   if (proposta.status === 'arquivada') return 'Arquivada';
   if (proposta.status === 'vetada') return 'Vetada';
@@ -135,9 +145,9 @@ const statusLabel = (proposta) => {
 };
 
 const statusTone = (proposta) => {
-  if (proposta.status === 'votacao_hoje' || proposta.status === 'aguardando_sancao') return 'warning';
-  if (proposta.status === 'sancionada') return 'success';
-  if (proposta.status === 'arquivada' || proposta.status === 'vetada') return 'danger';
+  if (proposta.status === 'votacao_hoje' || proposta.status === 'aguardando_sancao' || proposta.status === 'veto_congresso') return 'warning';
+  if (['sancionada','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado'].includes(proposta.status)) return 'success';
+  if (['arquivada','vetada','vetada_mantida'].includes(proposta.status)) return 'danger';
   return 'info';
 };
 
@@ -570,7 +580,7 @@ const ActorCard = ({ ator, partido, onAction, onDossier }) => {
       <div className="flex items-start gap-3">
         <PoliticalAvatar name={ator.nome} seed={ator.avatarSeed} size={50} />
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2"><h3 className="truncate text-sm font-black text-text">{ator.nome}</h3><span className="h-2 w-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[partido?.id] || '#7D8796' }} /></div>
+          <div className="flex items-center gap-2"><h3 className="truncate text-sm font-black text-text">{ator.nome}</h3><span className="h-2 w-2 rounded-full" style={{ backgroundColor: PARTY_COLORS[partido?.id] || '#64748B' }} /></div>
           <p className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-wider text-muted">{ator.cargo} · {ator.uf}</p>
           <div className="mt-2 flex items-center gap-2"><span className={`font-mono text-xs font-black ${relationColor}`}>{ator.relacao}</span><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-bg"><div className="h-full bg-primary" style={{ width: `${ator.relacao}%` }} /></div></div>
         </div>
@@ -596,7 +606,8 @@ export default function Congress() {
     enviarLeiParaCongresso,
     executarArticulacaoCongresso,
     negociarAtorCongresso,
-    sancionarProjeto,
+    decidirSancaoProjeto,
+    articularManutencaoVeto,
     definirPosicaoGovernoProjeto,
     deliberarEmendaProjeto,
     incorporarAjusteGovernoProjeto,
@@ -605,6 +616,7 @@ export default function Congress() {
   const [tab, setTab] = useState('plenario');
   const [selectedParty, setSelectedParty] = useState(null);
   const [selectedProposalId, setSelectedProposalId] = useState(null);
+  const [proposalPage, setProposalPage] = useState(0);
   const [voteProposal, setVoteProposal] = useState(null);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('todas');
@@ -613,10 +625,14 @@ export default function Congress() {
   const [lawSort, setLawSort] = useState('apoio');
   const [dossierActor, setDossierActor] = useState(null);
   const [actorPage, setActorPage] = useState(0);
+  const [partialVetoOpen, setPartialVetoOpen] = useState(null);
+  const [partialVetoSelection, setPartialVetoSelection] = useState({});
 
-  const activeProposals = useMemo(() => votacoes.filter((v) => !['arquivada', 'vetada', 'sancionada'].includes(v.status)), [votacoes]);
+  const activeProposals = useMemo(() => votacoes.filter((v) => !['arquivada','vetada','sancionada','vetada_mantida','sancionada_veto_mantido','sancionada_veto_derrubado','promulgada_veto_derrubado','veto_mantido','veto_derrubado'].includes(v.status)), [votacoes]);
   const autonomousProposals = useMemo(() => activeProposals.filter((v) => v.origem && v.origem !== 'executivo'), [activeProposals]);
   const selectedProposal = activeProposals.find((v) => v.id === selectedProposalId) || activeProposals[0] || null;
+  const proposalPageCount = Math.max(1, Math.ceil(activeProposals.length / PROPOSALS_PER_PAGE));
+  const visibleProposals = activeProposals.slice(proposalPage * PROPOSALS_PER_PAGE, proposalPage * PROPOSALS_PER_PAGE + PROPOSALS_PER_PAGE);
   const selectedLaw = selectedProposal ? leisDisponiveis.find((l) => l.id === selectedProposal.leiId) : null;
   const projection = selectedProposal && selectedLaw ? getVoteProjection(partidos, selectedLaw, selectedProposal) : null;
 
@@ -624,9 +640,18 @@ export default function Congress() {
     if (!selectedProposalId && activeProposals[0]) setSelectedProposalId(activeProposals[0].id);
   }, [activeProposals, selectedProposalId]);
 
+  useEffect(() => {
+    const selectedIndex = activeProposals.findIndex((v) => v.id === selectedProposalId);
+    if (selectedIndex >= 0) setProposalPage(Math.floor(selectedIndex / PROPOSALS_PER_PAGE));
+  }, [activeProposals, selectedProposalId]);
+
+  useEffect(() => {
+    setProposalPage((page) => Math.min(page, proposalPageCount - 1));
+  }, [proposalPageCount]);
+
   const billsReady = activeProposals.filter((v) => v.status === 'votacao_hoje');
   const sanctions = activeProposals.filter((v) => v.status === 'aguardando_sancao');
-  const committeeBills = activeProposals.filter((v) => v.fase === 'comissao' || v.status === 'aguarda_segundo_turno' || v.status === 'senado');
+  const vetoes = activeProposals.filter((v) => v.status === 'veto_congresso');
 
   const filteredLaws = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -675,10 +700,28 @@ export default function Congress() {
     else toast.error(result?.motivo || 'Ação indisponível.');
   };
 
-  const decideSanction = (proposal, sanction) => {
-    const result = sancionarProjeto(proposal.id, sanction);
-    if (result?.ok) toast[ sanction ? 'success' : 'warning'](sanction ? 'Lei sancionada.' : 'Veto presidencial registrado.');
-    else toast.error(result?.motivo || 'Não foi possível registrar a decisão.');
+  const decideSanction = (proposal, mode, deviceIds = []) => {
+    const result = decidirSancaoProjeto?.(proposal.id, mode, deviceIds);
+    if (result?.ok) {
+      if (mode === 'integral') toast.success('Lei sancionada integralmente.');
+      else if (mode === 'parcial') toast.warning('Veto parcial enviado ao Congresso.');
+      else toast.warning('Veto total enviado ao Congresso.');
+      setPartialVetoOpen(null);
+      setPartialVetoSelection((current) => ({ ...current, [proposal.id]: [] }));
+    } else toast.error(result?.motivo || 'Não foi possível registrar a decisão.');
+  };
+
+  const togglePartialDevice = (proposalId, deviceId) => {
+    setPartialVetoSelection((current) => {
+      const selected = current[proposalId] || [];
+      return { ...current, [proposalId]: selected.includes(deviceId) ? selected.filter(id => id !== deviceId) : [...selected, deviceId] };
+    });
+  };
+
+  const defendVeto = (proposal) => {
+    const result = articularManutencaoVeto?.(proposal.id);
+    if (result?.ok) toast.success('Casa Civil mobilizada para sustentar o veto.');
+    else toast.error(result?.motivo || 'Não foi possível articular a manutenção do veto.');
   };
 
   const defineGovernmentPosition = (proposal, position) => {
@@ -730,6 +773,7 @@ export default function Congress() {
           { id: 'plenario', label: 'Plenário', icon: Landmark },
           { id: 'comissoes', label: 'Comissões & Tramitação', icon: Scale },
           { id: 'agenda', label: `Agenda da Casa · ${autonomousProposals.length}`, icon: Megaphone },
+          { id: 'legado', label: 'Legado Legislativo', icon: Crown },
           { id: 'articulacao', label: 'Articulação', icon: KeyRound },
           { id: 'banco', label: `Banco de Leis · ${leisDisponiveis.length}`, icon: BookOpen },
         ].map((item) => {
@@ -777,19 +821,65 @@ export default function Congress() {
             </section>
 
             <section className="ui-surface p-4 md:p-5">
-              <div className="flex items-center gap-3"><GameIcon icon={FilePenLine} tone="success" size="sm" /><div><p className="ui-kicker">Palácio do Planalto</p><h3 className="mt-0.5 text-sm font-black text-text">Sanção presidencial</h3></div></div>
+              <div className="flex items-center gap-3"><GameIcon icon={FilePenLine} tone="success" size="sm" /><div><p className="ui-kicker">Palácio do Planalto</p><h3 className="mt-0.5 text-sm font-black text-text">Sanção e veto presidencial</h3></div></div>
+              <p className="mt-2 text-[11px] leading-relaxed text-muted">O texto aprovado pode ser sancionado integralmente, receber veto parcial em dispositivos específicos ou ser vetado por inteiro. Vetos seguem para análise do Congresso.</p>
               <div className="mt-4 space-y-3">
-                {sanctions.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted">Nenhum projeto aguarda sua assinatura.</p> : sanctions.map((proposal) => (
-                  <article key={proposal.id} className="rounded-xl border border-warning/25 bg-warning/5 p-4">
-                    <p className="text-sm font-black text-text">{proposal.titulo}</p>
-                    <p className="mt-1 text-[10px] uppercase tracking-wider text-warning">Aprovado nas duas Casas · {originMeta(proposal).short}</p>
-                    {proposal.autor?.nome && <p className="mt-1 text-[10px] text-muted">Autoria política: {proposal.autor.nome}{proposal.patrocinadores?.length ? ` · apoio ${proposal.patrocinadores.join(', ')}` : ''}</p>}
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => decideSanction(proposal, true)} className="ui-btn-primary"><Check size={14} /> Sancionar</button>
-                      <button type="button" onClick={() => decideSanction(proposal, false)} className="ui-btn-secondary"><X size={14} /> Vetar</button>
-                    </div>
-                  </article>
-                ))}
+                {sanctions.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-center text-xs text-muted">Nenhum projeto aguarda sua decisão.</p> : sanctions.map((proposal) => {
+                  const law = leisDisponiveis.find((item) => item.id === proposal.leiId);
+                  const devices = gerarDispositivosVeto(proposal, law || {});
+                  const selected = partialVetoSelection[proposal.id] || [];
+                  const selectedWeight = devices.filter(d => selected.includes(d.id)).reduce((sum, d) => sum + d.peso, 0);
+                  const partialOpen = partialVetoOpen === proposal.id;
+                  return (
+                    <article key={proposal.id} className="rounded-xl border border-warning/25 bg-warning/5 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div><p className="text-sm font-black text-text">{proposal.titulo}</p><p className="mt-1 text-[10px] uppercase tracking-wider text-warning">Aprovado nas duas Casas · texto v{proposal.versaoTexto || 1} · {originMeta(proposal).short}</p></div>
+                        <span className="ui-chip">{(proposal.alteracoesTexto || []).length} alteração(ões)</span>
+                      </div>
+                      {proposal.autor?.nome && <p className="mt-2 text-[10px] text-muted">Autoria política: {proposal.autor.nome}{proposal.patrocinadores?.length ? ` · apoio ${proposal.patrocinadores.join(', ')}` : ''}</p>}
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <button type="button" onClick={() => decideSanction(proposal, 'integral')} className="ui-btn-primary"><Check size={14} /> Sanção integral</button>
+                        <button type="button" onClick={() => setPartialVetoOpen(partialOpen ? null : proposal.id)} className="ui-btn-secondary"><FilePenLine size={14} /> Veto parcial</button>
+                        <button type="button" onClick={() => decideSanction(proposal, 'total')} className="ui-btn-secondary text-danger"><X size={14} /> Veto total</button>
+                      </div>
+                      {partialOpen && (
+                        <div className="mt-4 rounded-xl border border-border bg-card/65 p-3">
+                          <div className="flex items-start justify-between gap-3"><div><p className="ui-data-label">Dispositivos passíveis de veto</p><p className="mt-1 text-[11px] text-muted">Selecione artigos/blocos acessórios. O núcleo da matéria permanece preservado no veto parcial.</p></div><span className="ui-chip text-warning">{Math.round(selectedWeight)}% do impacto</span></div>
+                          <div className="mt-3 max-h-56 space-y-2 overflow-y-auto custom-scrollbar pr-1">
+                            {devices.map((device) => (
+                              <label key={device.id} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${selected.includes(device.id) ? 'border-warning/35 bg-warning/8' : 'border-border bg-panel/35'}`}>
+                                <input type="checkbox" checked={selected.includes(device.id)} onChange={() => togglePartialDevice(proposal.id, device.id)} className="mt-1" />
+                                <span className="min-w-0 flex-1"><span className="block text-xs font-black text-text">{device.titulo}</span><span className="mt-0.5 block text-[10px] leading-relaxed text-muted">{device.descricao}</span><span className="mt-1 block text-[9px] font-bold uppercase tracking-wider text-muted">{device.origem}{device.autor ? ` · ${device.autor}` : ''} · peso ${Math.round(device.peso)}%</span></span>
+                              </label>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between gap-3"><p className="text-[10px] text-muted">O restante do texto entra em vigor; somente os dispositivos vetados seguem para o Congresso.</p><button type="button" disabled={!selected.length} onClick={() => decideSanction(proposal, 'parcial', selected)} className="ui-btn-primary disabled:opacity-40">Confirmar veto parcial</button></div>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+
+              {vetoes.length > 0 && <div className="my-5 border-t border-border" />}
+              {vetoes.length > 0 && <div className="flex items-center justify-between gap-3"><div><p className="ui-kicker">Sessão conjunta</p><h4 className="mt-1 text-sm font-black text-text">Vetos sob análise do Congresso</h4></div><span className="ui-chip text-warning">{vetoes.length} pendente(s)</span></div>}
+              <div className="mt-3 space-y-3">
+                {vetoes.map((proposal) => {
+                  const law = leisDisponiveis.find((item) => item.id === proposal.leiId);
+                  const projection = calcularProjecaoDerrubadaVeto({ proposta: proposal, lei: law || {}, partidos, congresso });
+                  const veto = proposal.vetoPresidencial || {};
+                  return (
+                    <article key={proposal.id} className="rounded-xl border border-danger/25 bg-danger/5 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black text-text">{proposal.titulo}</p><p className="mt-1 text-[10px] font-black uppercase tracking-wider text-danger">{veto.tipo === 'parcial' ? `Veto parcial · ${Math.round(veto.pesoVetado || 0)}% do impacto` : 'Veto total'}</p></div><span className="ui-chip">defesa +{veto.defesaBonus || 0}</span></div>
+                      {veto.tipo === 'parcial' && <p className="mt-2 text-[10px] text-muted">Dispositivos vetados: {(veto.dispositivos || []).map(d => d.titulo).join(' · ')}</p>}
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="rounded-xl border border-border bg-card/45 p-3"><p className="ui-data-label">Câmara</p><p className={`mt-1 font-mono text-lg font-black ${projection.camara.projetado >= 257 ? 'text-danger' : 'text-success'}`}>{projection.camara.projetado}<span className="text-[10px] text-muted"> / 257 p/ derrubar</span></p></div>
+                        <div className="rounded-xl border border-border bg-card/45 p-3"><p className="ui-data-label">Senado</p><p className={`mt-1 font-mono text-lg font-black ${projection.senado.projetado >= 41 ? 'text-danger' : 'text-success'}`}>{projection.senado.projetado}<span className="text-[10px] text-muted"> / 41 p/ derrubar</span></p></div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-[10px] text-muted">Tendência: <b className="text-text">{projection.tendencia === 'derrubada' ? 'Congresso inclinado a rejeitar o veto' : projection.tendencia === 'manutencao' ? 'veto tende a ser sustentado' : 'disputa aberta'}</b>. A deliberação pode ocorrer na próxima virada.</p><button type="button" onClick={() => defendVeto(proposal)} className="ui-btn-secondary"><ShieldCheck size={14} /> Articular manutenção · 3 CP / 5 bastidor</button></div>
+                    </article>
+                  );
+                })}
               </div>
             </section>
           </div>
@@ -797,25 +887,26 @@ export default function Congress() {
       )}
 
       {tab === 'comissoes' && (
-        <div className="grid gap-4 xl:grid-cols-[.92fr_1.08fr] animate-fadeIn">
+        <div className="grid gap-4 xl:grid-cols-[.72fr_1.28fr] animate-fadeIn">
           <section className="ui-surface overflow-hidden">
-            <div className="border-b border-border px-4 py-4 md:px-5">
-              <div className="flex items-center justify-between gap-3"><div><p className="ui-kicker">Esteira legislativa</p><h3 className="mt-1 text-base font-black text-text">Projetos em tramitação</h3></div><span className="ui-chip">{committeeBills.length}</span></div>
+            <div className="border-b border-border px-4 py-3.5 md:px-5">
+              <div className="flex items-center justify-between gap-3"><div><p className="ui-kicker">Esteira legislativa</p><h3 className="mt-1 text-base font-black text-text">Projetos em tramitação</h3><p className="mt-1 text-[10px] text-muted">Dois projetos por vez · o dossiê ganhou mais espaço ao lado.</p></div><div className="flex items-center gap-2"><span className="ui-chip">{activeProposals.length}</span><button type="button" disabled={proposalPage===0} onClick={()=>{const page=Math.max(0,proposalPage-1);setProposalPage(page);const proposal=activeProposals[page*PROPOSALS_PER_PAGE];if(proposal)setSelectedProposalId(proposal.id)}} className="ui-btn-secondary min-h-8 px-2.5" aria-label="Projetos anteriores"><ChevronLeft size={15}/></button><button type="button" disabled={proposalPage>=proposalPageCount-1} onClick={()=>{const page=Math.min(proposalPageCount-1,proposalPage+1);setProposalPage(page);const proposal=activeProposals[page*PROPOSALS_PER_PAGE];if(proposal)setSelectedProposalId(proposal.id)}} className="ui-btn-secondary min-h-8 px-2.5" aria-label="Próximos projetos"><ChevronRight size={15}/></button></div></div>
             </div>
-            <div className="max-h-[640px] space-y-2 overflow-y-auto p-3 custom-scrollbar">
-              {activeProposals.length === 0 ? <p className="p-6 text-center text-sm text-muted">Nenhum projeto ativo. Abra o Banco de Leis e envie sua agenda.</p> : activeProposals.map((proposal) => {
+            <div className="space-y-2 p-3">
+              {activeProposals.length === 0 ? <p className="p-6 text-center text-sm text-muted">Nenhum projeto ativo. Abra o Banco de Leis e envie sua agenda.</p> : visibleProposals.map((proposal) => {
                 const law = leisDisponiveis.find((item) => item.id === proposal.leiId);
                 const active = selectedProposal?.id === proposal.id;
                 return (
                   <button type="button" key={proposal.id} onClick={() => setSelectedProposalId(proposal.id)} className={`w-full rounded-xl border p-3 text-left transition-colors ${active ? 'border-primary/45 bg-primary/8' : 'border-border bg-panel/35 hover:bg-panel/65'}`}>
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0"><div className="flex items-center gap-2"><span className="ui-chip py-0.5">{law?.instrumento}</span><span className="ui-chip py-0.5">{originMeta(proposal).short}</span><span className="ui-chip py-0.5">v{proposal.versaoTexto || 1}</span><span className={`text-[9px] font-black uppercase tracking-wider ${statusTone(proposal) === 'warning' ? 'text-warning' : statusTone(proposal) === 'danger' ? 'text-danger' : 'text-info'}`}>{statusLabel(proposal)}</span></div><p className="mt-2 truncate text-sm font-black text-text">{proposal.titulo}</p></div>
+                      <div className="min-w-0"><div className="flex flex-wrap items-center gap-1.5"><span className="ui-chip py-0.5">{law?.instrumento}</span><span className="ui-chip py-0.5">{originMeta(proposal).short}</span><span className="ui-chip py-0.5">v{proposal.versaoTexto || 1}</span><span className={`text-[9px] font-black uppercase tracking-wider ${statusTone(proposal) === 'warning' ? 'text-warning' : statusTone(proposal) === 'danger' ? 'text-danger' : 'text-info'}`}>{statusLabel(proposal)}</span></div><p className="mt-2 line-clamp-2 text-sm font-black text-text">{proposal.titulo}</p></div>
                       <ChevronRight size={15} className="mt-1 shrink-0 text-muted" />
                     </div>
                     <div className="mt-3"><ProposalTimeline proposta={proposal} lei={law} comissoes={comissoes} /></div>
                   </button>
                 );
               })}
+              {activeProposals.length>0&&<div className="flex items-center justify-between px-1 pt-1 text-[9px] font-black uppercase tracking-wider text-muted"><span>Página {proposalPage+1} de {proposalPageCount}</span><span>{Math.min(proposalPage*PROPOSALS_PER_PAGE+1,activeProposals.length)}–{Math.min((proposalPage+1)*PROPOSALS_PER_PAGE,activeProposals.length)} de {activeProposals.length}</span></div>}
             </div>
           </section>
 
@@ -924,6 +1015,8 @@ export default function Congress() {
           </section>
         </div>
       )}
+
+      {tab === 'legado' && <LegislativeLegacy />}
 
       {tab === 'articulacao' && (
         <div className="grid gap-4 xl:grid-cols-[1.25fr_.75fr] animate-fadeIn">

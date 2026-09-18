@@ -102,6 +102,7 @@ export const criarEstadoEleitoralInicial=({perfil={},estados=[]}={})=>{
     minigames:{convencao:false,vice:false,debate:false},
     calendario:calendarioEleitoral2026,
     noticiaMes:null,
+    partidoEleitoral:null,
   };
 };
 
@@ -154,6 +155,9 @@ const latentPlayerSupport=({estado,eleicao,gruposSociais={},perfil={},apoioGov})
   if(apoioGov==='incumbent'&&(estado.governador?.relacao??50)>55)value+=2;
   if(apoioGov==='challenger')value+=1;
   value+=(eleicao.modificadoresEstados?.[estado.uf]||0);
+  const legado=eleicao.legadoLegislativo||{};
+  if(Number.isFinite(legado.indice)) value+=clamp((legado.indice-50)*.035,-1.8,1.8);
+  if((legado.bandeiras||[]).length) value+=Math.min(.6,(legado.bandeiras||[]).length*.2);
   return clamp(value,8,62);
 };
 
@@ -224,8 +228,10 @@ export const calcularViceFit=(vice,perfil,eleicao)=>{
   const p=party(eleicao.partidoAtual);
   const ideol=ideologyDistance(vice.ideologia,p.ideologia);
   const regional=vice.uf&&vice.uf!==perfil.ufOrigem?10:2;
-  const score=clamp((vice.pesoEleitoral||50)*.36+(vice.lealdade||50)*.22+(vice.popularidade||50)*.2+regional-ideol*6-(vice.risco||0)*.14);
-  return {score:Number(score.toFixed(0)),regional,ideol,ofusca:(vice.visibilidade||0)>(eleicao.reconhecimento||30)+30,risco:vice.risco||0};
+  const aliados=new Set((eleicao.partidoEleitoral?.aliancas||[]).flatMap(a=>a.partidos||[]).filter(id=>id!==eleicao.partidoAtual));
+  const bonusAlianca=vice.partidoId&&aliados.has(vice.partidoId)?8:0;
+  const score=clamp((vice.pesoEleitoral||50)*.36+(vice.lealdade||50)*.22+(vice.popularidade||50)*.2+regional+bonusAlianca-ideol*6-(vice.risco||0)*.14);
+  return {score:Number(score.toFixed(0)),regional,ideol,bonusAlianca,ofusca:(vice.visibilidade||0)>(eleicao.reconhecimento||30)+30,risco:vice.risco||0};
 };
 
 export const aplicarOfertaConvencao=(eleicao,caciqueId,ofertaId)=>{
@@ -241,7 +247,7 @@ export const aplicarOfertaConvencao=(eleicao,caciqueId,ofertaId)=>{
   const next={...eleicao,
     coerencia:clamp(eleicao.coerencia+offer.coerencia),
     recursos:{...eleicao.recursos,caixa:Math.max(0,eleicao.recursos.caixa-offer.custo)},
-    convencao:{...eleicao.convencao,apoioDelegados:clamp(eleicao.convencao.apoioDelegados+delta),apoios:[...(eleicao.convencao.apoios||[]),{caciqueId,ofertaId,accepted,apoio}],compromissos:[...(eleicao.convencao.compromissos||[]),{caciqueId,ofertaId,nome:offer.nome,risco:offer.risco}],ofertasUsadas:[...(eleicao.convencao.ofertasUsadas||[]),ofertaId]},
+    convencao:{...eleicao.convencao,apoioDelegados:clamp(eleicao.convencao.apoioDelegados+delta),apoios:[...(eleicao.convencao.apoios||[]),{caciqueId,ofertaId,accepted,apoio,regiao:cacique.regiao}],compromissos:[...(eleicao.convencao.compromissos||[]),{caciqueId,ofertaId,nome:offer.nome,risco:offer.risco}],ofertasUsadas:[...(eleicao.convencao.ofertasUsadas||[]),ofertaId]},
   };
   return {ok:true,accepted,apoio,eleicao:next,cacique,offer};
 };
@@ -262,14 +268,15 @@ export const mudarFiliacaoEleitoral=(eleicao,partidoId,dataAtual)=>{
   return {ok:true,eleicao:{...eleicao,partidoAtual:partidoId,filiacao:{partidoId,desde:d,confirmada2026:true,mudancas:[{de:eleicao.partidoAtual,para:partidoId,data:d},...(eleicao.filiacao?.mudancas||[])]},coerencia:clamp(eleicao.coerencia-perda),autenticidade:clamp(eleicao.autenticidade-perda*.7),convencao:{...eleicao.convencao,apoioDelegados:24,apoios:[],compromissos:[],ofertasUsadas:[]},recursos:{...eleicao.recursos,fefcProjetado:novo.fundoBase}}};
 };
 
-export const executarCaptacao=(eleicao,id,{reputacaoDigital=50,relacaoGovernadores=50,dataAtual='2026-01-01'}={})=>{
+export const executarCaptacao=(eleicao,id,{reputacaoDigital=50,relacaoGovernadores=50,dataAtual='2026-01-01',fefcCota=null}={})=>{
   const evt=eventosCaptacaoSeed.find(e=>e.id===id); if(!evt)return {ok:false,motivo:'Evento inexistente.'};
   if(iso(dataAtual)<evt.libera)return {ok:false,motivo:`Esta modalidade só abre em ${evt.libera.split('-').reverse().join('/')}.`};
   if(id==='fundo_eleitoral'&&!eleicao.convencao?.oficializado)return {ok:false,motivo:'A cota presidencial do fundo depende da candidatura oficializada pelo partido.'};
+  if(id==='fundo_eleitoral'&&(eleicao.recursos?.fefcLiberado||0)>0)return {ok:false,motivo:'A cota do fundo eleitoral já foi liberada para esta campanha.'};
   let ganho=evt.base;
   if(id==='crowdfunding')ganho+=reputacaoDigital*.08+eleicao.coerencia*.04;
   if(id==='jantar_regional')ganho+=relacaoGovernadores*.05;
-  if(id==='fundo_eleitoral')ganho+=Math.max(0,(eleicao.convencao.apoioDelegados-50)*.16);
+  if(id==='fundo_eleitoral')ganho=Number.isFinite(Number(fefcCota))?Math.max(0,Number(fefcCota)):ganho+Math.max(0,(eleicao.convencao.apoioDelegados-50)*.16);
   if(id==='doadores')ganho+=(eleicao.autenticidade||70)*.035;
   ganho=Math.round(ganho*10)/10;
   const recursos={...eleicao.recursos,caixa:Number(((eleicao.recursos.caixa||0)+ganho).toFixed(1)),prestacaoRisco:clamp((eleicao.recursos.prestacaoRisco||0)+evt.risco),acoesCaptacao:[{id,ganho},...(eleicao.recursos.acoesCaptacao||[])].slice(0,30)};

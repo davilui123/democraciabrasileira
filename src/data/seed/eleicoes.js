@@ -1,3 +1,4 @@
+import { partidosEleitoraisBase } from './partidos.js';
 export const calendarioEleitoral2026 = [
   { id:'pre', data:'2026-01-01', titulo:'Pré-campanha', texto:'Articulação política, construção de chapa e posicionamento público.', fase:'pre_campanha' },
   { id:'janela', data:'2026-03-05', fim:'2026-04-03', titulo:'Janela partidária', texto:'Deputados podem trocar de partido; o tabuleiro legislativo entra em movimento.', fase:'janela_partidaria' },
@@ -11,12 +12,7 @@ export const calendarioEleitoral2026 = [
   { id:'turno2', data:'2026-10-25', titulo:'2º turno', texto:'Segundo turno, quando necessário.', fase:'segundo_turno' },
 ];
 
-export const partidosEleitoraisSeed = [
-  { id:'esq', sigla:'PPG', nome:'Partido Progressista', ideologia:'centro-esquerda', fundoBase:44, capilaridade:78, disciplina:71, cor:'#D94C5A' },
-  { id:'centro', sigla:'MOC', nome:'Movimento Central', ideologia:'centro', fundoBase:39, capilaridade:92, disciplina:54, cor:'#7D8796' },
-  { id:'dir', sigla:'LIB', nome:'Liberais Unidos', ideologia:'centro-direita', fundoBase:36, capilaridade:74, disciplina:68, cor:'#4C82D8' },
-  { id:'ind', sigla:'IND', nome:'Independentes', ideologia:'centro', fundoBase:18, capilaridade:46, disciplina:38, cor:'#D6A246' },
-];
+export const partidosEleitoraisSeed = partidosEleitoraisBase;
 
 export const viceAtualPorPartido = {
   esq:{ id:'vice_teresa_amaral', nome:'Teresa Amaral', cargo:'Vice-Presidente da República', partidoId:'esq', uf:'BA', ideologia:'centro-esquerda', regiao:'Nordeste', popularidade:55, lealdade:76, ambicao:58, pesoEleitoral:63, risco:18, visibilidade:48, avatar:'vice-teresa-amaral', carreira:'Ex-governadora e senadora', frase:'Lealdade não significa silêncio quando a coalizão começa a rachar.', agendaPessoal:'Fortalecer políticas sociais com responsabilidade federativa.', rede:'Governadores do Nordeste, bancada social e prefeitos médios.', vulnerabilidade:'Seu grupo político cobra espaço próprio e pode resistir a uma troca de chapa.', biografia:'Ex-governadora com boa relação entre prefeitos e Congresso. Entrou na chapa anterior para equilibrar experiência regional e densidade legislativa.' },

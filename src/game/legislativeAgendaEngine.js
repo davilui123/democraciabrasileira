@@ -23,7 +23,7 @@ const words = (value='') => normalize(value)
   .split(/[^a-z0-9]+/)
   .filter(x => x.length >= 4);
 
-const activeStatuses = new Set(['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado','aguardando_sancao']);
+const activeStatuses = new Set(['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado','aguardando_sancao','veto_congresso']);
 
 const isAvailable = (lei, votacoes, aprovadas, recentLaws=new Set()) => {
   if (aprovadas.includes(lei.id) || recentLaws.has(lei.id)) return false;

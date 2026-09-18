@@ -1,4 +1,5 @@
 import { gerarEmendasIniciais, gerarEmendaAdicional } from './amendmentEngine.js';
+import { simularAnaliseVeto } from './vetoEngine.js';
 const clamp = (value, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 
 export const CONGRESSO_INICIAL = {
@@ -125,11 +126,17 @@ export const calcularProjecao = (proposta, lei, partidos) => {
       if (origem === 'oposicao' && partido.id === 'dir') base += 10;
       if (origem === 'governadores' && ['centro','ind'].includes(partido.id)) base += 4;
     }
-    const probabilidade = clamp(
+    const linhaPartidaria = clamp(
       base + bonusGeral + (bonusPorPartido[partido.id] || 0) + penalidadePolarizacao,
       4,
       97,
     );
+    // 4.9.7.2: disciplina deixa de ser apenas um dado de dossiê. Partidos coesos
+    // convertem melhor a orientação da liderança em votos; partidos fragmentados
+    // tendem a se aproximar do comportamento de bancada dividida (50/50).
+    const disciplina = clamp(partido.disciplina ?? 50);
+    const fatorDisciplina = 0.82 + disciplina / 280;
+    const probabilidade = clamp(50 + (linhaPartidaria - 50) * fatorDisciplina, 4, 97);
     const sim = Math.round(partido.cadeiras * (probabilidade / 100));
     return {
       id: partido.id,
@@ -226,10 +233,34 @@ export const processarCongressoTurno = ({ votacoes, leis, partidos, atores, cong
   const eventosGlobais = [];
 
   const novasVotacoes = votacoes.map((original) => {
-    if (!['em_tramitacao', 'votacao_hoje', 'aguarda_segundo_turno', 'senado'].includes(original.status)) return original;
+    if (!['em_tramitacao', 'votacao_hoje', 'aguarda_segundo_turno', 'senado', 'veto_congresso'].includes(original.status)) return original;
     const proposta = { ...original, historico: [...(original.historico || [])], eventos: [...(original.eventos || [])], emendas: [...(original.emendas || [])], alteracoesTexto: [...(original.alteracoesTexto || [])] };
     const lei = leis.find((item) => item.id === proposta.leiId);
     if (!lei) return proposta;
+
+    // Vetos voltam ao Congresso em sessão conjunta. O veto precisa ficar ao menos um mês em análise
+    // para que o jogador tenha espaço de articulação antes da deliberação autônoma.
+    if (proposta.status === 'veto_congresso') {
+      const vetoDesde = proposta.vetoPresidencial?.turno ?? turno;
+      if (vetoDesde < turno) {
+        const resultadoVeto = simularAnaliseVeto({ proposta, lei, partidos, congresso: congressoNovo });
+        proposta.resultadoVeto = resultadoVeto;
+        proposta.status = resultadoVeto.derrubado ? 'veto_derrubado' : 'veto_mantido';
+        proposta.fase = 'encerrada';
+        proposta.historico.unshift({
+          turno,
+          tipo: 'veto_congresso',
+          texto: resultadoVeto.derrubado
+            ? `Congresso derruba o veto: ${resultadoVeto.camara} deputados e ${resultadoVeto.senado} senadores votam pela rejeição do veto.`
+            : `Congresso mantém o veto: a derrubada obteve ${resultadoVeto.camara} votos na Câmara e ${resultadoVeto.senado} no Senado.`,
+        });
+        eventosGlobais.push(resultadoVeto.derrubado
+          ? `⚡ Congresso derruba veto presidencial a ${proposta.titulo}.`
+          : `🛡️ Congresso mantém veto presidencial a ${proposta.titulo}.`);
+        congressoNovo.poder = clamp((congressoNovo.poder || 0) + (resultadoVeto.derrubado ? -5 : 3));
+      }
+      return proposta;
+    }
 
     // Projetos que não nasceram no Planalto não ficam congelados esperando o jogador abrir a votação.
     // Depois de um mês na Ordem do Dia, a Câmara pode deliberar autonomamente.

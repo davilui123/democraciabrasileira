@@ -24,11 +24,12 @@ const routeForHeadline = (headline='') => {
   const text = headline.toLowerCase();
   if (/stf|supremo|constitucional|tcu|tribunal de contas|pgr|procuradoria|banco central|controle externo|senado aprova|senado rejeita/.test(text)) return 'instituicoes';
   if (/congresso|câmara|senado|lei |veto|sancion|cpi|plenário/.test(text)) return 'congresso';
+  if (/partido|executiva nacional|diretório|filiaç|máquina partidária|\bppg\b|\bmoc\b|\blib\b|\bind\b/.test(text)) return 'partidos';
   if (/rússia|moscou|china|pequim|eua|estados unidos|washington|alemanha|berlim|argentina|buenos aires|emirados|abu dhabi|índia|nova délhi|itamaraty|internacional|diplom|geopol|mercosul|terras raras|minerais críticos|tarifaço|sobretaxa/.test(text)) return 'mapa';
   if (/fazenda|inflação|selic|dívida|primário|fiscal|tribut|tarifa|risco-país/.test(text)) return 'economia';
   if (/governador|estado:|crise federativa|federativ|são paulo|repasse/.test(text)) return 'federacao';
   if (/ministério|ministro|pasta|conselho de governo/.test(text)) return 'ministerios';
-  if (/programa|política pública/.test(text)) return 'programas';
+  if (/programa|política pública|regulamenta|implementação da lei/.test(text)) return 'programas';
   if (/estatal|empresa|parceria|ceitec/.test(text)) return 'estatais';
   if (/eleição|campanha|pesquisa|convenção|vice-presid/.test(text)) return 'eleicoes';
   if (/visita presidencial|tratado/.test(text)) return 'mapa';
@@ -40,6 +41,7 @@ const editoriaForHeadline = (headline='') => {
   return ({
     instituicoes: 'Justiça & Poder',
     congresso: 'Política',
+    partidos: 'Partidos',
     economia: 'Economia',
     federacao: 'Brasil',
     ministerios: 'Governo',
@@ -81,6 +83,7 @@ export default function NewsCenter({ onClose, onNavigate }) {
     recusarConviteAgenda,
     stf,
     dataString,
+    eleicao,
     limparNotificacoes,
     geopolitica = { pressoesDiplomaticas: [] },
     paises = [],
@@ -89,6 +92,15 @@ export default function NewsCenter({ onClose, onNavigate }) {
     leisDisponiveis = [],
     definirPosicaoGovernoProjeto,
     politicalOrchestrator = { activeArcs: [], clusters: [], archive: [], priorityQueue: [] },
+    controleLeis = { casosSTF: [], auditoriasTCU: [] },
+    apresentarDefesaLeiSTF,
+    apresentarPlanoAdequacaoTCU,
+    regulamentacaoLeis = { processos: [], capacidadeMax: 2, capacidadeRestante: 2 },
+    partidos = [],
+    perfilPresidencial,
+    responderCobrancaPartidaria,
+    sistemaPartidario = { propostas: [] },
+    responderPropostaPartidaria,
   } = useGameStore();
 
   const demandas = useMemo(() => cargos.filter(c => c.demandaAtual), [cargos]);
@@ -98,7 +110,14 @@ export default function NewsCenter({ onClose, onNavigate }) {
   const notificacoes = redeSocial.notificacoes || [];
   const pressoesDiplomaticas=(geopolitica.pressoesDiplomaticas||[]).filter(p=>p.status==='pendente');
   const agendaAutonomaPendente=(votacoes||[]).filter(p=>p.origem&&p.origem!=='executivo'&&['em_tramitacao','votacao_hoje','aguarda_segundo_turno','senado'].includes(p.status)&&(!p.posicaoGoverno||p.posicaoGoverno==='sem_posicao'));
-  const pendenciasCount = (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + pressoesDiplomaticas.length + agendaAutonomaPendente.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
+  const casosSTFPendentes=(controleLeis?.casosSTF||[]).filter(c=>c.status!=='julgado'&&!c.defesaApresentada);
+  const auditoriasTCUPendentes=(controleLeis?.auditoriasTCU||[]).filter(a=>a.status!=='decidida'&&!a.planoApresentado);
+  const regulamentacoesPendentes=(regulamentacaoLeis?.processos||[]).filter(p=>p.status==='pendente');
+  const partidoPresidencial=partidos.find(p=>p.id===perfilPresidencial?.partidoId);
+  const cobrancasPartidarias=(partidoPresidencial?.governoPartidario?.cobrancas||[]).filter(c=>c.status==='pendente');
+  const propostasPartidarias=(sistemaPartidario.propostas||[]).filter(p=>p.status==='pendente'&&p.partidos?.includes(perfilPresidencial?.partidoId));
+  const convencaoPendente=eleicao?.fase==='convencao'&&!eleicao?.convencao?.oficializado;
+  const pendenciasCount = (convencaoPendente ? 1 : 0) + (eventoFederativoAtivo ? 1 : 0) + demandas.length + convites.length + pressoesDiplomaticas.length + agendaAutonomaPendente.length + casosSTFPendentes.length + auditoriasTCUPendentes.length + regulamentacoesPendentes.length + cobrancasPartidarias.length + propostasPartidarias.length + (stf?.indicacaoPendente ? 1 : 0) + (vagas.length ? 1 : 0);
   const membrosAgrupados=new Set((politicalOrchestrator.clusters||[]).flatMap(c=>c.memberIds||[]));
   const enredosAtivos = [...(politicalOrchestrator.clusters||[]),...(politicalOrchestrator.activeArcs||[]).filter(a=>!membrosAgrupados.has(a.id))];
   const [tab, setTab] = useState('plantao');
@@ -132,6 +151,10 @@ export default function NewsCenter({ onClose, onNavigate }) {
     if(result?.ok) toast.success('Posição do Planalto registrada.');
     else toast.error(result?.motivo || 'Não foi possível registrar a posição do governo.');
   };
+  const responderSTFLei=(id)=>{const result=apresentarDefesaLeiSTF?.(id);result?.ok?toast.success('Defesa da lei enviada ao STF.'):toast.error(result?.motivo||'Não foi possível preparar a defesa.');};
+  const responderTCULei=(id)=>{const result=apresentarPlanoAdequacaoTCU?.(id);result?.ok?toast.success('Plano de adequação enviado ao TCU.'):toast.error(result?.motivo||'Não foi possível preparar a adequação.');};
+  const responderPartido=(id,resposta)=>{const result=responderCobrancaPartidaria?.(id,resposta);result?.ok?toast.success(result.texto):toast.error(result?.motivo||'Não foi possível responder à Executiva.');};
+  const responderAliancaPartidaria=(id,resposta)=>{const result=responderPropostaPartidaria?.(id,resposta);result?.ok?toast.success(result.texto):toast.error(result?.motivo||'Não foi possível responder à composição partidária.');};
 
   return (
     <div className="fixed inset-0 z-[140] grid place-items-center bg-black/72 p-3 backdrop-blur-lg md:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
@@ -198,6 +221,12 @@ export default function NewsCenter({ onClose, onNavigate }) {
             <div className="space-y-4">
               <div><div className="ui-kicker">Decisão presidencial</div><h3 className="mt-1 text-xl font-black">Assuntos que não podem ficar só na manchete</h3></div>
 
+              {propostasPartidarias.map(pr=>{const otherId=pr.partidos.find(id=>id!==perfilPresidencial?.partidoId);const other=partidos.find(p=>p.id===otherId);return <article key={pr.id} className="rounded-2xl border border-info/25 bg-info/5 p-4"><div className="flex items-start justify-between gap-3"><div><div className="ui-kicker text-info">Sistema partidário · {pr.tipo==='federacao'?'Federação':'Aliança'}</div><h4 className="mt-1 font-black">{pr.titulo}</h4><p className="mt-1 text-xs leading-relaxed text-muted">{pr.texto}</p><div className="mt-2 text-[9px] font-bold uppercase tracking-wider text-muted">compatibilidade {Math.round(pr.compatibilidade||0)}/100 · responder até mês {pr.responderAte}</div></div><button onClick={()=>go('partidos')} className="ui-btn-secondary px-3">Abrir partidos <ArrowRight size={13}/></button></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><button onClick={()=>responderAliancaPartidaria(pr.id,'aceitar')} className="ui-btn-primary justify-center">Aceitar com {other?.sigla||otherId}</button><button onClick={()=>responderAliancaPartidaria(pr.id,'recusar')} className="ui-btn-secondary justify-center border-danger/25 text-danger">Recusar</button></div></article>})}
+
+              {cobrancasPartidarias.map(c=><article key={c.id} className="rounded-2xl border border-warning/25 bg-warning/5 p-4"><div className="flex items-start justify-between gap-3"><div><div className="ui-kicker text-warning">Partido no poder · {partidoPresidencial?.sigla}</div><h4 className="mt-1 font-black">{c.titulo}</h4><p className="mt-1 text-xs leading-relaxed text-muted">{c.pedido}</p><div className="mt-2 text-[9px] font-bold uppercase tracking-wider text-muted">{c.portaVoz} · responder até mês {c.responderAte}</div></div><button onClick={()=>go('partidos')} className="ui-btn-secondary px-3">Abrir partido <ArrowRight size={13}/></button></div><div className="mt-3 grid gap-2 sm:grid-cols-3"><button onClick={()=>responderPartido(c.id,'comprometer')} className="ui-btn-primary justify-center">Assumir</button><button onClick={()=>responderPartido(c.id,'negociar')} className="ui-btn-secondary justify-center">Negociar</button><button onClick={()=>responderPartido(c.id,'recusar')} className="ui-btn-secondary justify-center border-danger/25 text-danger">Recusar</button></div></article>)}
+
+              {convencaoPendente&&<section className="rounded-2xl border border-warning/30 bg-warning/5 p-4"><div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-warning"><Vote size={14}/> Convenção partidária</div><h4 className="mt-1 font-black">Sua candidatura ainda não foi homologada</h4></div><span className="ui-chip">{Number(eleicao?.partidoEleitoral?.delegados?.apoioPct||eleicao?.convencao?.apoioDelegados||0).toFixed(1)}% delegados</span></div><p className="mt-2 text-xs leading-relaxed text-muted">Diretórios estaduais, alas e lideranças partidárias estão votando a chapa. O prazo da convenção é curto e a candidatura não pode seguir ao registro sem homologação.</p><button onClick={()=>go('eleicoes')} className="ui-btn-primary mt-3">Abrir convenção <ArrowRight size={14}/></button></section>}
+
               {pressoesDiplomaticas.map(pressao => {
                 const pais=paises.find(p=>p.id===pressao.paisId);
                 return <section key={pressao.id} className="rounded-2xl border border-info/30 bg-info/5 p-5">
@@ -222,12 +251,35 @@ export default function NewsCenter({ onClose, onNavigate }) {
                 </section>;
               })}
 
+              {casosSTFPendentes.map(c=><section key={c.id} className="rounded-2xl border border-info/25 bg-info/5 p-4">
+                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-info"><Scale size={14}/> STF · lei judicializada</div>
+                <h4 className="mt-1 font-black">{c.tituloLei}</h4><p className="mt-1 text-xs text-muted">{c.tipo} · relatoria de {c.relator} · risco {Math.round(c.riscoAtual||0)}/100</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted">A AGU pode defender a constitucionalidade do texto antes da liminar e do julgamento.</p>
+                <div className="mt-3 flex flex-wrap gap-2"><button onClick={()=>responderSTFLei(c.id)} className="ui-btn-primary">Apresentar defesa · 3 CP</button><button onClick={()=>go('instituicoes')} className="ui-btn-secondary">Abrir controle <ArrowRight size={12}/></button></div>
+              </section>)}
+
+              {auditoriasTCUPendentes.map(a=><section key={a.id} className="rounded-2xl border border-warning/25 bg-warning/5 p-4">
+                <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-wider text-warning"><Landmark size={14}/> TCU · acompanhamento da lei</div>
+                <h4 className="mt-1 font-black">{a.tituloLei}</h4><p className="mt-1 text-xs text-muted">Risco {Math.round(a.riscoAtual||0)}/100 · {String(a.status||'').replaceAll('_',' ')}</p>
+                <p className="mt-2 text-xs leading-relaxed text-muted">O governo pode corrigir governança, critérios de gasto e prestação de contas antes da decisão do controle externo.</p>
+                <div className="mt-3 flex flex-wrap gap-2"><button onClick={()=>responderTCULei(a.id)} className="ui-btn-primary">Plano de adequação · 2 CP</button><button onClick={()=>go('instituicoes')} className="ui-btn-secondary">Abrir controle <ArrowRight size={12}/></button></div>
+              </section>)}
+
               {eventoFederativoAtivo && (
                 <section className="rounded-2xl border border-danger/30 bg-danger/5 p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-danger"><Landmark size={14} /> Crise federativa · {eventoFederativoAtivo.estado}</div><span className="ui-chip text-danger">impacto ×{eventoFederativoAtivo.multiplicador?.toFixed?.(2) || '1.00'}</span></div>
                   <h4 className="mt-2 text-lg font-black">{eventoFederativoAtivo.titulo}</h4>
                   <p className="mt-2 text-sm leading-relaxed text-text/75">{eventoFederativoAtivo.texto}</p>
                   <div className="mt-4 grid gap-2 lg:grid-cols-3">{(eventoFederativoAtivo.opcoes || []).map((op, index) => <button key={op.id} onClick={() => responderFederacao(op.id)} className="rounded-xl border border-border bg-card/65 p-3 text-left text-xs font-bold hover:border-warning/40"><span className="mr-2 font-mono text-warning">{String.fromCharCode(65 + index)}</span>{op.texto}</button>)}</div>
+                </section>
+              )}
+
+              {regulamentacoesPendentes.length > 0 && (
+                <section className="rounded-2xl border border-warning/25 bg-warning/5 p-4">
+                  <div className="flex items-center justify-between gap-3"><div><div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wider text-warning"><Landmark size={14}/> Regulamentação pendente</div><h4 className="mt-1 font-black">{regulamentacoesPendentes.length} lei(s) aguardam desenho de implementação</h4></div><span className="ui-chip">capacidade {regulamentacaoLeis.capacidadeRestante}/{regulamentacaoLeis.capacidadeMax}</span></div>
+                  <p className="mt-2 text-xs leading-relaxed text-muted">A sanção não entrega sozinha. Defina território, ritmo, financiamento e governança antes que o prazo político expire.</p>
+                  <div className="mt-3 space-y-1">{regulamentacoesPendentes.slice(0,3).map(p=><div key={p.id} className="text-[10px] font-bold text-text/80">• {p.tituloLei}{p.mesesEmAtraso>0?` · ${p.mesesEmAtraso}m em atraso`:''}</div>)}</div>
+                  <button onClick={() => go('programas')} className="ui-btn-secondary mt-3">Abrir regulamentação <ArrowRight size={14}/></button>
                 </section>
               )}
 

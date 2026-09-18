@@ -31,9 +31,18 @@ Simulador político em React/Vite no qual o jogador ocupa a Presidência da Rep�
 - **Fase 4.9.6.1:** Mega Catálogo Legislativo — 156 leis fictícias, cadeias pós-sanção, riscos STF/TCU/federativos, regulamentação futura, programas derivados e banco legislativo expandido.
 - **Fase 4.9.6.2:** Agenda Legislativa Autônoma — oposição, Congresso e governadores protocolam projetos próprios; o Planalto escolhe posição e matérias externas podem avançar e ser votadas sem autorização presidencial.
 - **Fase 4.9.6.3:** Emendas & Negociação do Texto — bancadas e comissões alteram projetos, o Planalto pode aceitar, contrapropor ou rejeitar demandas, versões do texto são persistidas e concessões modificam votos, custos e riscos do texto final.
+- **Fase 4.9.6.4:** Sanção, Veto & Derrubada — sanção integral, veto parcial por dispositivo, veto total, articulação presidencial e sessão conjunta do Congresso com restauração ou manutenção do texto.
+- **Fase 4.9.6.5:** Judicialização & Controle — STF e TCU passam a reagir ao texto final efetivamente vigente, com liminares, julgamento colegiado, auditorias, planos de adequação e bloqueios de execução.
+- **Fase 4.9.6.6:** Regulamentação & Implementação — leis vigentes entram em uma fila regulatória jogável; o Presidente escolhe ritmo, território, execução, financiamento e governança, criando programas derivados com custo, risco, metas e controle institucional.
+- **Fase 4.9.6.7:** Legado Legislativo — Livro do Mandato, índice de legado, bandeiras presidenciais, jornada das leis e memória eleitoral.
+- **Fase 4.9.7.1:** Identidade & Dossiê Partidário — partidos ganham direção nacional, alas, máquina, 27 diretórios estaduais, logos com fallback e os sete pilares de governança partidária que sustentarão a expansão eleitoral.
+- **Fase 4.9.7.2:** Vida Interna & Máquina Partidária — caixa, filiações, disciplina, alas e diretórios evoluem mensalmente; o partido presidencial ganha ações internas e ministros sem legenda podem filiar-se de forma emergente.
+- **Fase 4.9.7.3:** Partido no Poder — a Executiva presidencial cobra cargos, espaço estratégico, agenda, bandeiras e coerência; compromissos têm prazo e passam a afetar bancada, governabilidade e relação Planalto–partido.
+- **Fase 4.9.7.4:** Janela, Migração & Alianças — lideranças, ministros e governadores podem mudar de legenda; dissidências alteram bancadas; partidos negociam alianças/federações e Executivas podem intervir em diretórios estaduais.
+- **Fase 4.9.7.5:** Convenção & Eleição — delegados dos 27 diretórios, alas, alianças, máquina, fundo eleitoral e candidaturas estaduais passam a alimentar diretamente a disputa presidencial e a convenção.
 - **Fases 5–7:** expansão da gameplay, integração sistêmica, balanceamento e fechamento do ciclo completo de governo.
 
-Consulte `REFACTORACAO_FASE4_9_6_3.md` e `QA_FASE4_9_6_3.md` para a etapa atual.
+Consulte `REFACTORACAO_FASE4_9_7_5.md` e `QA_FASE4_9_7_5.md` para a etapa atual.
 
 ## Executar
 
@@ -41,3 +50,6 @@ Consulte `REFACTORACAO_FASE4_9_6_3.md` e `QA_FASE4_9_6_3.md` para a etapa atual.
 npm install
 npm run dev
 ```
+
+## Fase 4.9.7.5 — Convenção & Eleição
+A DLC partidária se encerra conectando a organização interna à eleição: diretórios viram delegados e palanques, alianças influenciam recursos e vice, a direção distribui o fundo e a candidatura presidencial precisa vencer a convenção real do próprio partido.
